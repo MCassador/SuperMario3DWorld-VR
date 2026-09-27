@@ -1,0 +1,29 @@
+[Definition]
+titleIds = 0005000010145D00,0005000010145C00,0005000010106100
+name = Reduce Shine (VR experiment, by MCassador)
+path = "Super Mario 3D World/Enhancements/Reduce Shine (VR)"
+description = Experimental (MCassador). Dampens the shine in one specific shader found via a shader dump, to test a VR reflection/brightness bug. See KNOWN-ISSUES.md.
+version = 7
+
+[Default]
+$specDamp = 0.35
+
+[Preset]
+name = Default (35% shine)
+$specDamp = 0.35
+
+[Preset]
+name = 60% shine
+$specDamp = 0.6
+
+[Preset]
+name = 15% shine (strong)
+$specDamp = 0.15
+
+[Preset]
+name = Off (0% shine, this shader only)
+$specDamp = 0.0
+
+[Preset]
+name = Unchanged (100%, for comparison)
+$specDamp = 1.0
