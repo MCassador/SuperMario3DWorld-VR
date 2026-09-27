@@ -150,7 +150,7 @@ function RecoverPreviousSession($stateFile, $settingsFile) {
 
 Say ''
 $versionFile = Join-Path $root 'VERSION'
-$version = 'Alpha'
+$version = 'Version 1'
 if (Test-Path -LiteralPath $versionFile) { $version = (Get-Content -LiteralPath $versionFile -Raw).Trim() }
 Say ('Super Mario 3D World VR - ' + $version + ' - ' + $modeName)
 Say '-------------------------------------'

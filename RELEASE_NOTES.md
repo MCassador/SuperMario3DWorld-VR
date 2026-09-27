@@ -1,6 +1,6 @@
-# Alpha 1.2
+# Notas de lançamento da base VR
 
-An early alpha release. The changes below build on Alpha 1.1.
+Histórico da base VR em que a Version 1 foi construída (em inglês).
 
 ## VR controllers
 

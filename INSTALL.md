@@ -9,9 +9,9 @@
 - Para o preset padrão de 120 FPS, use uma taxa de atualização de headset de 120 Hz.
 - Feche o Cemu antes de iniciar uma sessão VR.
 
-## Instalar a Alpha 1.2
+## Instalar a Version 1
 
-1. Extraia `SuperMario3DWorld-VR-Alpha-1.2-install.zip`.
+1. Extraia `SuperMario3DWorld-VR-Version-1-install.zip`.
 2. Copie a pasta **`Mario3DWorld-VR`** para dentro da sua pasta do Cemu, ao lado do `Cemu.exe`.
 3. Abra essa pasta e rode **`Start-VR.cmd`**. O jogo inicia no modo diorama.
 4. Abra o jogo pela lista de jogos do Cemu.

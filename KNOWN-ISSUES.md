@@ -1,6 +1,6 @@
 # Problemas conhecidos
 
-**Alpha 1.2** é para testes iniciais. Uma jogatina completa ainda não foi
+A **Version 1** ainda é para testes. Uma jogatina completa ainda não foi
 validada, e os testes de compatibilidade cobrem uma única combinação de Windows/Cemu/VDXR.
 
 As modificações locais (feitas por **MCassador**, veja o resumo no README.md e o detalhe
@@ -99,7 +99,7 @@ informações de conta antes de compartilhar logs. Não anexe arquivos do jogo n
 ## Encontrado numa revisão local de código (corrigido na fonte, recompilado; ainda não testado no headset)
 
 Estes quatro problemas estavam em `cemuvr_layer.dll` e foram confirmados lendo o
-código-fonte em `SuperMario3DWorld-VR-Alpha-1.2-source/core/src/cemu_layer.cpp` e
+código-fonte da camada (`core/src/cemu_layer.cpp` e
 `xr_core.cpp`. As ferramentas de build (Visual Studio Build Tools com C++, CMake, o SDK
 Vulkan e o SDK OpenXR, compilado localmente como biblioteca estática) foram instaladas e
 os quatro foram corrigidos diretamente no `.cpp` e recompilados - não são mais remendos no

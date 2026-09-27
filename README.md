@@ -1,6 +1,6 @@
 # Super Mario 3D World VR
 
-**Alpha 1.2** · Windows x64 · Cemu · OpenXR
+**Version 1** · Windows x64 · Cemu · OpenXR
 
 Renderização estéreo e rastreamento de cabeça em seis graus de liberdade para a versão de Wii U
 de **Super Mario 3D World**. Jogue com um controle (gamepad) no modo diorama ou em primeira pessoa.
@@ -72,14 +72,14 @@ números e interruptores exatos, em [INSTALL.md](INSTALL.md); resumo:
   eram desiguais, deixando o jogo em câmera lenta a ~70 quadros por segundo; agora aproveita
   esse tempo sobrando no quadro seguinte.
 
-Veja as [notas de lançamento](RELEASE_NOTES.md) da Alpha 1.2 original para detalhes daquela
-base e [INSTALL.md](INSTALL.md) para os controles e todos os interruptores das modificações
+Veja as [notas de lançamento](RELEASE_NOTES.md) para o histórico da base VR e
+[INSTALL.md](INSTALL.md) para os controles e todos os interruptores das modificações
 acima. Iluminação, sombras e efeitos de profundidade ainda têm limitações; veja
 [problemas conhecidos](KNOWN-ISSUES.md).
 
 ## Para começar
 
-1. Baixe o **ZIP de instalação da Alpha 1.2** em [Releases](../../releases).
+1. Baixe o **ZIP de instalação da Version 1** em [Releases](../../releases).
 2. Coloque a pasta `Mario3DWorld-VR` ao lado do `Cemu.exe`.
 3. Feche o Cemu e rode `Start-VR.cmd`.
 4. Abra Super Mario 3D World no Cemu e jogue com o gamepad ou com os controles VR.
@@ -131,7 +131,7 @@ entre as atualizações de jogo. A taxa real depende do seu sistema.
 
 Há um preset de referência de 60 FPS; 90 e 144 FPS são experimentais.
 
-## Status alpha
+## Status
 
 Este é um lançamento inicial e incompleto. Uma jogatina completa ainda não foi
 validada. O comportamento de câmera, visibilidade, efeitos e transições de cena ainda
