@@ -39,6 +39,13 @@ rrValueZero:
 .int 0
 rrValueOne:
 .int 0x3F800000
+; The HUD protocol marker: cemuvr_layer.dll looks for it within 0x4000 bytes of rrFlowHeader and
+; acknowledges it in the next word, so it must stay here at the start (the codecave grew past that
+; once, and the HUD stayed inside both eye pictures - doubled - instead of its own layer).
+rrHudWorldMagic:
+.int 0x48554132
+rrHudWorldAck:
+.int 0
 0x024DB32C = rrAfterSecondDraw:
 0x024DB93C = rrPresent:
 0x024DB728 = rrDraw:
@@ -3152,6 +3159,141 @@ lis r12, 65535
 ori r12, r12, 57343
 and r6, r6, r12
 mtSwingDone:
+; the same attack gesture with the left controller (mtSwingL: its own switch, thresholds and state)
+lis r11, mtSwingL@ha
+addi r11, r11, mtSwingL@l
+lwz r12, 0(r11)
+cmpwi r12, 0
+beq mtSwingDoneL
+li r12, 0
+stw r12, 64(r11)
+lwz r12, 16(r9)
+cmpwi r12, 0
+beq mtSwingGoneL
+lfs f0, 32(r9)
+lfs f1, 4(r9)
+fsubs f0, f0, f1
+lfs f1, 48(r9)
+lfs f2, 8(r9)
+fsubs f1, f1, f2
+lfs f2, 64(r9)
+lfs f3, 12(r9)
+fsubs f2, f2, f3
+lwz r12, 24(r11)
+cmpwi r12, 0
+beq mtSwingStoreL
+lfs f3, 32(r11)
+fsubs f3, f0, f3
+lfs f6, 36(r11)
+fsubs f6, f1, f6
+lfs f7, 40(r11)
+fsubs f7, f2, f7
+lwz r12, 0(r11)
+cmpwi r12, 1
+bne mtSwingCastL
+fmuls f10, f3, f3
+fmuls f11, f6, f6
+fadds f10, f10, f11
+fmuls f11, f7, f7
+fadds f10, f10, f11
+lfs f11, 4(r11)
+.int 0xFC0A5800 ; fcmpu cr0, f10, f11
+ble mtSwingStoreL
+li r12, 1
+stw r12, 64(r11)
+b mtSwingStoreL
+mtSwingCastL:
+fmuls f10, f0, f3
+fmuls f11, f1, f6
+fadds f10, f10, f11
+fmuls f11, f2, f7
+fadds f10, f10, f11
+fmuls f11, f0, f0
+fmuls f12, f1, f1
+fadds f11, f11, f12
+fmuls f12, f2, f2
+fadds f11, f11, f12
+lfs f12, 52(r11)
+.int 0xFC0B6000 ; fcmpu cr0, f11, f12
+blt mtSwingStoreL
+fmuls f12, f10, f10
+fsubs f13, f10, f10
+.int 0xFC0A6800 ; fcmpu cr0, f10, f13
+blt mtSwingBackL
+ble mtSwingStoreL
+lwz r12, 68(r11)
+cmpwi r12, 0
+beq mtSwingStoreL
+lfs f13, 48(r11)
+fmuls f13, f13, f11
+.int 0xFC0C6800 ; fcmpu cr0, f12, f13
+ble mtSwingStoreL
+li r12, 1
+stw r12, 64(r11)
+li r12, 0
+stw r12, 68(r11)
+b mtSwingStoreL
+mtSwingBackL:
+lfs f13, 44(r11)
+fmuls f13, f13, f11
+.int 0xFC0C6800 ; fcmpu cr0, f12, f13
+ble mtSwingStoreL
+li r12, 1
+stw r12, 68(r11)
+lwz r12, 56(r11)
+stw r12, 60(r11)
+mtSwingStoreL:
+stfs f0, 32(r11)
+stfs f1, 36(r11)
+stfs f2, 40(r11)
+li r12, 1
+stw r12, 24(r11)
+b mtSwingEndL
+mtSwingGoneL:
+li r12, 0
+stw r12, 24(r11)
+stw r12, 68(r11)
+mtSwingEndL:
+lwz r12, 68(r11)
+cmpwi r12, 0
+beq mtSwingWinDoneL
+lwz r12, 60(r11)
+addi r12, r12, -1
+stw r12, 60(r11)
+cmpwi r12, 0
+bgt mtSwingWinDoneL
+li r12, 0
+stw r12, 68(r11)
+mtSwingWinDoneL:
+lwz r12, 20(r11)
+cmpwi r12, 0
+beq mtSwingNoCoolL
+addi r12, r12, -1
+stw r12, 20(r11)
+mtSwingNoCoolL:
+lwz r12, 16(r11)
+cmpwi r12, 0
+beq mtSwingNoHoldL
+addi r12, r12, -1
+stw r12, 16(r11)
+b mtSwingPressL
+mtSwingNoHoldL:
+lwz r12, 64(r11)
+cmpwi r12, 0
+beq mtSwingDoneL
+lwz r12, 20(r11)
+cmpwi r12, 0
+bne mtSwingDoneL
+lwz r12, 8(r11)
+stw r12, 16(r11)
+lwz r12, 12(r11)
+stw r12, 20(r11)
+mtSwingPressL:
+ori r5, r5, 8192
+lis r12, 65535
+ori r12, r12, 57343
+and r6, r6, r12
+mtSwingDoneL:
 ; the frame in which X went down (kept in mtFireStat for the fireball summary)
 lis r11, mtFireStat@ha
 addi r11, r11, mtFireStat@l
@@ -4495,10 +4637,6 @@ lwz r0, 0x44(r1)
 mtlr r0
 addi r1, r1, 0x40
 blr
-rrHudWorldMagic:
-.int 0x48554132
-rrHudWorldAck:
-.int 0
 rrHudValues:
 .int 0x3e900000
 .int 0x3f300000
@@ -6458,16 +6596,51 @@ cmpw r3, r0
 bne mtHideZeroR
 lwz r0, 16(r12)
 cmpwi r0, 1
-beq mtHidePass
-b mtHideDo
+bne mtHideDo
+lwz r0, 68(r12)
+b mtGlovePose
 mtHideZeroR:
 lwz r0, 40(r7)
 cmpw r3, r0
 bne mtHideDo
 lwz r0, 88(r12)
 cmpwi r0, 1
+bne mtHideDo
+lwz r0, 140(r12)
+; A glove's pose follows its controller: each glove model holds 7 whole hand meshes (0 tight fist,
+; 1 half-closed, 2 grip, 3 open, 4 flat, 5 fingers up, 6 relaxed) and the game shows one of them.
+; Grip held -> mtGlovePoses+0 (the fist), trigger held -> +4 (half-closed); neither -> the game's own
+; choice. r0 = the controller's buttons (16 trigger, 32 grip), r4 = the shape asked about.
+mtGlovePose:
+lis r8, mtGlovePoses@ha
+addi r8, r8, mtGlovePoses@l
+lwz r7, 8(r8)
+cmpwi r7, 0
 beq mtHidePass
-b mtHideDo
+andi. r7, r0, 32
+lwz r7, 0(r8)
+bne mtGloveForce
+andi. r7, r0, 16
+lwz r7, 4(r8)
+bne mtGloveForce
+lwz r7, 16(r8)
+cmpwi r7, 0
+blt mtHidePass
+mtGloveForce:
+lwz r12, 12(r8)
+addi r12, r12, 1
+stw r12, 12(r8)
+cmpw r4, r7
+bne mtHideDo
+lwz r7, 16(r1)
+lwz r8, 20(r1)
+lwz r12, 24(r1)
+lwz r0, 12(r1)
+.int 0x7C0FF120 ; mtcrf 255,r0
+lwz r0, 8(r1)
+addi r1, r1, 0x20
+li r3, 1
+blr
 mtHidePass:
 lwz r7, 16(r1)
 lwz r8, 20(r1)
@@ -6587,14 +6760,68 @@ bne mtHeadOrig
 ; Toad ~84, small Mario ~76; eased so animation bobbing does not shake the view
 lis r9, mtEyeFit@ha
 addi r9, r9, mtEyeFit@l
+; (off: Mario's 145, mtEyeFit+24); the menu's fine adjustment (+20) is added either way
 lwz r0, 16(r9)
 cmpwi r0, 0
-beq mtEyeFitDone
+bne mtEyeFitNeck
+lfs f1, 24(r9)
+b mtEyeFitAdd
+mtEyeFitNeck:
 lfs f1, 652(r10)
 lfs f2, 28(r10)
 fsubs f1, f1, f2
+; the model's own scale (length of the root's X column: 1 normally, several times that with the
+; Mega Mushroom): the neck height is kept in unscaled units and scaled back at the end, so growing
+; or shrinking moves the view at once
+lfs f4, 0(r10)
+lfs f5, 16(r10)
+lfs f6, 32(r10)
+fmuls f7, f4, f4
+fmuls f5, f5, f5
+fadds f7, f7, f5
+fmuls f6, f6, f6
+fadds f7, f7, f6
+lfs f8, 40(r9)
+lfs f2, 48(r9)
+.int 0xFC071000 ; fcmpu cr0, f7, f2
+blt mtEyeScaleDone
+.int 0xFC803834 ; frsqrte f4, f7
+lfs f5, 44(r9)
+lfs f6, 52(r9)
+fmuls f2, f4, f4
+fmuls f2, f2, f7
+fmuls f2, f2, f5
+fsubs f2, f6, f2
+fmuls f4, f4, f2
+fmuls f2, f4, f4
+fmuls f2, f2, f7
+fmuls f2, f2, f5
+fsubs f2, f6, f2
+fmuls f4, f4, f2
+fmuls f8, f7, f4
+fmuls f1, f1, f4
+stfs f8, 56(r9)
+mtEyeScaleDone:
+lwz r0, 32(r9)
+cmpw r0, r3
+beq mtEyePeakSame
+stw r3, 32(r9)
+b mtEyePeakStore
+mtEyePeakSame:
+lfs f2, 28(r9)
+lfs f3, 36(r9)
+fsubs f2, f2, f3
+.int 0xFC011000 ; fcmpu cr0, f1, f2
+bge mtEyePeakStore
+fmr f1, f2
+mtEyePeakStore:
+stfs f1, 28(r9)
 lfs f2, 0(r9)
 fmuls f1, f1, f2
+fmuls f1, f1, f8
+mtEyeFitAdd:
+lfs f2, 20(r9)
+fadds f1, f1, f2
 lfs f2, 8(r9)
 .int 0xFC011000 ; fcmpu cr0, f1, f2
 bge mtEyeFitMin
@@ -6696,16 +6923,30 @@ fadds f0, f0, f1
 lfs f1, 52(r11)
 fmuls f13, f13, f1
 fmuls f0, f0, f1
-b mtBodyEyeDone
+b mtBodyEyeHead
 mtBodyEyeC0:
 lfs f13, 36(r7)
 lfs f0, 44(r7)
-b mtBodyEyeDone
+b mtBodyEyeHead
 mtBodyEyeC1:
 cmpwi r5, 1
 bne mtBodyEyeDone
 lfs f13, 48(r7)
 lfs f0, 56(r7)
+mtBodyEyeHead:
+; the neck (Head bone 13) under the eyes, not the root: new root = eyes - turned (neck - root)
+lfs f1, 636(r10)
+fsubs f1, f1, f9
+lfs f2, 668(r10)
+fsubs f2, f2, f10
+fmuls f3, f5, f1
+fmuls f4, f6, f2
+fadds f3, f3, f4
+fmuls f4, f5, f2
+fmuls f7, f6, f1
+fsubs f4, f4, f7
+fsubs f13, f13, f3
+fsubs f0, f0, f4
 mtBodyEyeDone:
 lis r7, mtTurnKeep@ha
 addi r7, r7, mtTurnKeep@l
@@ -8685,16 +8926,35 @@ cmpwi r6, 4
 bne mtShEllOrig
 lis r12, mtTurnKeep@ha
 addi r12, r12, mtTurnKeep@l
+; r8 = 1 while the body is drawn turned/moved (then the shadow goes with it), else 0
+li r8, 1
 lwz r0, 16(r12)
 cmpwi r0, 0
-beq mtShEllOrig
+bne mtShEllKeepOk
+li r8, 0
+mtShEllKeepOk:
 lwz r9, 28(r12)
 lis r10, mtHideModel@ha
 addi r10, r10, mtHideModel@l
 lwz r10, 12(r10)
 subf r9, r9, r10
 cmplwi r9, 2
-bgt mtShEllOrig
+ble mtShEllFresh
+li r8, 0
+mtShEllFresh:
+; without the body turn the shadow is still made easier to see, in the original first person only
+cmpwi r8, 0
+bne mtShEllGo
+lis r10, mtEyeBack@ha
+lwz r0, mtEyeBack@l(r10)
+cmpwi r0, 0
+bne mtShEllOrig
+lis r10, mtControl@ha
+addi r10, r10, mtControl@l
+lwz r0, 28(r10)
+cmpwi r0, 1
+bne mtShEllOrig
+mtShEllGo:
 lis r10, mtShStat@ha
 addi r10, r10, mtShStat@l
 lwz r9, 4(r10)
@@ -8788,6 +9048,8 @@ lwz r0, 40(r4)
 stw r0, 40(r11)
 lwz r0, 44(r4)
 stw r0, 44(r11)
+cmpwi r8, 0
+beq mtShEllNoTurn
 lfs f5, 0(r12)
 lfs f6, 4(r12)
 lfs f9, 8(r12)
@@ -8838,6 +9100,42 @@ fadds f11, f11, f13
 fadds f12, f12, f0
 stfs f11, 12(r11)
 stfs f12, 44(r11)
+mtShEllNoTurn:
+; first person: the landing shadow a bit bigger (mtShLook+0) and darker (mtShLook+4), easier to aim with
+lis r12, mtShLook@ha
+addi r12, r12, mtShLook@l
+lfs f7, 0(r12)
+lfs f8, 0(r11)
+fmuls f8, f8, f7
+stfs f8, 0(r11)
+lfs f8, 4(r11)
+fmuls f8, f8, f7
+stfs f8, 4(r11)
+lfs f8, 8(r11)
+fmuls f8, f8, f7
+stfs f8, 8(r11)
+lfs f8, 32(r11)
+fmuls f8, f8, f7
+stfs f8, 32(r11)
+lfs f8, 36(r11)
+fmuls f8, f8, f7
+stfs f8, 36(r11)
+lfs f8, 40(r11)
+fmuls f8, f8, f7
+stfs f8, 40(r11)
+lfs f7, 4(r12)
+lfs f8, 0(r5)
+fmuls f8, f8, f7
+stfs f8, 8(r12)
+lfs f8, 4(r5)
+fmuls f8, f8, f7
+stfs f8, 12(r12)
+lfs f8, 8(r5)
+fmuls f8, f8, f7
+stfs f8, 16(r12)
+lwz r0, 12(r5)
+stw r0, 20(r12)
+addi r5, r12, 8
 mr r4, r11
 mtShEllOrig:
 stwu r1, -0x70(r1)
@@ -8850,16 +9148,35 @@ cmpwi r6, 4
 bne mtShCylOrig
 lis r12, mtTurnKeep@ha
 addi r12, r12, mtTurnKeep@l
+; r8 = 1 while the body is drawn turned/moved (then the shadow goes with it), else 0
+li r8, 1
 lwz r0, 16(r12)
 cmpwi r0, 0
-beq mtShCylOrig
+bne mtShCylKeepOk
+li r8, 0
+mtShCylKeepOk:
 lwz r9, 28(r12)
 lis r10, mtHideModel@ha
 addi r10, r10, mtHideModel@l
 lwz r10, 12(r10)
 subf r9, r9, r10
 cmplwi r9, 2
-bgt mtShCylOrig
+ble mtShCylFresh
+li r8, 0
+mtShCylFresh:
+; without the body turn the shadow is still made easier to see, in the original first person only
+cmpwi r8, 0
+bne mtShCylGo
+lis r10, mtEyeBack@ha
+lwz r0, mtEyeBack@l(r10)
+cmpwi r0, 0
+bne mtShCylOrig
+lis r10, mtControl@ha
+addi r10, r10, mtControl@l
+lwz r0, 28(r10)
+cmpwi r0, 1
+bne mtShCylOrig
+mtShCylGo:
 lis r10, mtShStat@ha
 addi r10, r10, mtShStat@l
 lwz r9, 4(r10)
@@ -8953,6 +9270,8 @@ lwz r0, 40(r4)
 stw r0, 40(r11)
 lwz r0, 44(r4)
 stw r0, 44(r11)
+cmpwi r8, 0
+beq mtShCylNoTurn
 lfs f5, 0(r12)
 lfs f6, 4(r12)
 lfs f9, 8(r12)
@@ -9003,6 +9322,42 @@ fadds f11, f11, f13
 fadds f12, f12, f0
 stfs f11, 12(r11)
 stfs f12, 44(r11)
+mtShCylNoTurn:
+; first person: the landing shadow a bit bigger (mtShLook+0) and darker (mtShLook+4), easier to aim with
+lis r12, mtShLook@ha
+addi r12, r12, mtShLook@l
+lfs f7, 0(r12)
+lfs f8, 0(r11)
+fmuls f8, f8, f7
+stfs f8, 0(r11)
+lfs f8, 4(r11)
+fmuls f8, f8, f7
+stfs f8, 4(r11)
+lfs f8, 8(r11)
+fmuls f8, f8, f7
+stfs f8, 8(r11)
+lfs f8, 32(r11)
+fmuls f8, f8, f7
+stfs f8, 32(r11)
+lfs f8, 36(r11)
+fmuls f8, f8, f7
+stfs f8, 36(r11)
+lfs f8, 40(r11)
+fmuls f8, f8, f7
+stfs f8, 40(r11)
+lfs f7, 4(r12)
+lfs f8, 0(r5)
+fmuls f8, f8, f7
+stfs f8, 8(r12)
+lfs f8, 4(r5)
+fmuls f8, f8, f7
+stfs f8, 12(r12)
+lfs f8, 8(r5)
+fmuls f8, f8, f7
+stfs f8, 16(r12)
+lwz r0, 12(r5)
+stw r0, 20(r12)
+addi r5, r12, 8
 mr r4, r11
 mtShCylOrig:
 stwu r1, -0x70(r1)
@@ -9445,6 +9800,11 @@ cmpwi r5, 0
 beq mtHandSizeSet
 lfs f0, 60(r11)
 mtHandSizeSet:
+; ... times the body model's own scale (1; bigger with the Mega Mushroom), mtEyeFit+56
+lis r5, mtEyeFit@ha
+addi r5, r5, mtEyeFit@l
+lfs f1, 56(r5)
+fmuls f0, f0, f1
 lfs f1, 0(r4)
 fmuls f1, f1, f0
 stfs f1, 0(r4)
@@ -9808,6 +10168,1279 @@ lwz r11, 108(r10)
 blr
 0x022AD6E8 = bla mtFireDir
 
+; Throwing what Mario carries (shell, baseball, snowball, Bob-omb, enemies...). The player's carry
+; update (0x02291534) releases the held object by sending it one throw message (0x02409E90, r3 = the
+; held object's sensor, r4 = the player's Body sensor, r31 = the player), at 0x02291680 (after the
+; throw animation's countdown) and 0x02291730 (at once). Every object's handler reads the thrower's
+; facing vector ([[player+0xC0]]+0xC) during that call. In the original first person, with the right
+; controller tracked, the facing vector is set to where the controller points (on the ground plane,
+; length 1) for the call only, then put back - so the object flies where the hand aims.
+0x02409E90 = mtThrowMsg:
+0x02291684 = mtThrowARet:
+0x02291734 = mtThrowBRet:
+mtThrowA:
+bl mtThrowPre
+bl mtThrowMsg
+bl mtThrowPost
+b mtThrowARet
+0x02291680 = ba mtThrowA
+mtThrowB:
+bl mtThrowPre
+bl mtThrowMsg
+bl mtThrowPost
+b mtThrowBRet
+0x02291730 = ba mtThrowB
+; r3 and r4 must come out unchanged
+mtThrowPre:
+lis r12, mtThrow@ha
+addi r12, r12, mtThrow@l
+li r0, 0
+stw r0, 24(r12)
+lwz r8, 32(r12)
+addi r8, r8, 1
+stw r8, 32(r12)
+lis r10, mtHideActor@ha
+lwz r0, mtHideActor@l(r10)
+cmpw r0, r31
+bne mtThrowPreDone
+lis r12, mtThrow@ha
+addi r12, r12, mtThrow@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq mtThrowPreDone
+lis r11, mtHandCtl@ha
+addi r11, r11, mtHandCtl@l
+lwz r0, 0(r11)
+cmpwi r0, 0
+beq mtThrowPreDone
+lis r9, mtHandW@ha
+addi r9, r9, mtHandW@l
+lwz r0, 100(r9)
+cmpwi r0, 0
+beq mtThrowPreDone
+lis r10, mtEyeBack@ha
+lwz r0, mtEyeBack@l(r10)
+cmpwi r0, 0
+bne mtThrowPreDone
+lis r10, mtControl@ha
+addi r10, r10, mtControl@l
+lwz r0, 28(r10)
+cmpwi r0, 1
+bne mtThrowPreDone
+lis r10, mtPad@ha
+addi r10, r10, mtPad@l
+lwz r0, 88(r10)
+cmpwi r0, 1
+bne mtThrowPreDone
+lfs f0, 112(r9)
+lfs f2, 120(r9)
+; mtThrow+44 = 1: straight ahead of the body (the tracking space's forward, turned with the stick)
+lis r10, mtThrow@ha
+addi r10, r10, mtThrow@l
+lwz r0, 44(r10)
+cmpwi r0, 0
+beq mtThrowDirHand
+lis r10, mtHandCam@ha
+addi r10, r10, mtHandCam@l
+lwz r0, 60(r10)
+lwz r11, 64(r10)
+add r0, r0, r11
+cmpwi r0, 0
+beq mtThrowDirHand
+mflr r12
+bl mtHeadFwd
+mtlr r12
+fmr f0, f5
+fmr f2, f6
+mtThrowDirHand:
+fmuls f3, f0, f0
+fmuls f4, f2, f2
+fadds f3, f3, f4
+lfs f4, 124(r9)
+.int 0xFC032000 ; fcmpu cr0, f3, f4
+blt mtThrowPreDone
+.int 0xFC801834 ; frsqrte f4, f3
+fmuls f5, f4, f4
+fmuls f5, f5, f3
+lfs f6, 128(r9)
+fmuls f5, f5, f6
+lfs f6, 132(r9)
+fsubs f5, f6, f5
+fmuls f4, f4, f5
+fmuls f0, f0, f4
+fmuls f2, f2, f4
+lwz r10, 0xC0(r31)
+lis r11, 0x1000
+cmplw r10, r11
+blt mtThrowPreDone
+lis r11, 0x5000
+cmplw r10, r11
+bge mtThrowPreDone
+andi. r0, r10, 3
+bne mtThrowPreDone
+lwz r10, 0(r10)
+lis r11, 0x1000
+cmplw r10, r11
+blt mtThrowPreDone
+lis r11, 0x5000
+cmplw r10, r11
+bge mtThrowPreDone
+andi. r0, r10, 3
+bne mtThrowPreDone
+lis r12, mtThrow@ha
+addi r12, r12, mtThrow@l
+stw r10, 28(r12)
+lwz r0, 12(r10)
+stw r0, 12(r12)
+lwz r0, 16(r10)
+stw r0, 16(r12)
+lwz r0, 20(r10)
+stw r0, 20(r12)
+stfs f0, 12(r10)
+li r0, 0
+stw r0, 16(r10)
+stfs f2, 20(r10)
+li r0, 1
+stw r0, 24(r12)
+lwz r8, 36(r12)
+addi r8, r8, 1
+stw r8, 36(r12)
+mtThrowPreDone:
+blr
+mtThrowPost:
+lis r12, mtThrow@ha
+addi r12, r12, mtThrow@l
+lwz r0, 24(r12)
+cmpwi r0, 0
+beq mtThrowPostDone
+lwz r10, 28(r12)
+lwz r0, 12(r12)
+stw r0, 12(r10)
+lwz r0, 16(r12)
+stw r0, 16(r10)
+lwz r0, 20(r12)
+stw r0, 20(r10)
+li r0, 0
+stw r0, 24(r12)
+mtThrowPostDone:
+blr
+
+; Where a carried object is held. While carried, its place is the middle of Mario's hands
+; (0x022FF9A8 writes it to the vec3 at r30; r31 = the carrier's sensor, owner at +0x2C). The
+; function's last step (0x022FFA58, lwz r0,0x54(r1)) comes here: in the original first person with
+; the right controller tracked, the player's carried object sits in the right glove's palm instead,
+; so it is thrown from your hand.
+mtCarryPos:
+mflr r7
+lwz r11, 0x2C(r31)
+lis r10, mtHideActor@ha
+lwz r0, mtHideActor@l(r10)
+cmpw r0, r11
+beq mtCarryMine
+lis r10, mtHideHost@ha
+lwz r0, mtHideHost@l(r10)
+cmpw r0, r11
+bne mtCarryDone
+mtCarryMine:
+lis r12, mtThrow@ha
+addi r12, r12, mtThrow@l
+lwz r0, 4(r12)
+cmpwi r0, 0
+beq mtCarryDone
+lis r11, mtHandCtl@ha
+addi r11, r11, mtHandCtl@l
+lwz r0, 0(r11)
+cmpwi r0, 0
+beq mtCarryDone
+lis r9, mtHandW@ha
+addi r9, r9, mtHandW@l
+lwz r0, 100(r9)
+cmpwi r0, 0
+beq mtCarryDone
+lis r10, mtEyeBack@ha
+lwz r0, mtEyeBack@l(r10)
+cmpwi r0, 0
+bne mtCarryDone
+lis r10, mtControl@ha
+addi r10, r10, mtControl@l
+lwz r0, 28(r10)
+cmpwi r0, 1
+bne mtCarryDone
+lis r10, mtPad@ha
+addi r10, r10, mtPad@l
+mtCarryGlove:
+; the left glove when only its grip is held (and it is tracked), else the right one
+lwz r0, 16(r10)
+cmpwi r0, 1
+bne mtCarryRight
+lwz r0, 68(r10)
+andi. r0, r0, 32
+beq mtCarryRight
+lwz r0, 140(r10)
+andi. r0, r0, 32
+bne mtCarryRight
+lwz r9, 4(r11)
+lis r0, 0x1000
+cmplw r9, r0
+blt mtCarryRight
+addi r9, r9, 0xB4
+b mtCarryPlace
+mtCarryRight:
+lwz r0, 88(r10)
+cmpwi r0, 1
+bne mtCarryDone
+addi r9, r9, 48
+mtCarryPlace:
+; mtThrow+48 = 1: the object goes with the hand but sits ahead of it, along where the head faces
+; (mtThrow+52 units ahead of the wrist, mtThrow+56 below), so it moves with the hand and stays out of
+; the face; 0 = along the glove's fingers
+lwz r0, 48(r12)
+cmpwi r0, 0
+beq mtCarryFingers
+bl mtHeadFwd
+lfs f3, 52(r12)
+fmuls f5, f5, f3
+fmuls f6, f6, f3
+lfs f1, 12(r9)
+fadds f1, f1, f5
+stfs f1, 0(r30)
+lfs f1, 28(r9)
+lfs f3, 56(r12)
+fsubs f1, f1, f3
+stfs f1, 4(r30)
+lfs f1, 44(r9)
+fadds f1, f1, f6
+stfs f1, 8(r30)
+lwz r8, 40(r12)
+addi r8, r8, 1
+stw r8, 40(r12)
+b mtCarryDone
+mtCarryFingers:
+; r9 = the glove's 3x4 world matrix: its Z column (the fingers, carrying the glove size) at 8/24/40,
+; the wrist at 12/28/44; the object goes (mtHandCtl+76 + mtThrow+8) glove units along the fingers
+lfs f0, 76(r11)
+lfs f3, 8(r12)
+fadds f0, f0, f3
+lfs f1, 8(r9)
+lfs f2, 12(r9)
+fmuls f1, f1, f0
+fadds f1, f1, f2
+stfs f1, 0(r30)
+lfs f1, 24(r9)
+lfs f2, 28(r9)
+fmuls f1, f1, f0
+fadds f1, f1, f2
+stfs f1, 4(r30)
+lfs f1, 40(r9)
+lfs f2, 44(r9)
+fmuls f1, f1, f0
+fadds f1, f1, f2
+stfs f1, 8(r30)
+lwz r8, 40(r12)
+addi r8, r8, 1
+stw r8, 40(r12)
+mtCarryDone:
+mtlr r7
+lwz r0, 0x54(r1)
+blr
+0x022FFA58 = bla mtCarryPos
+
+; mtHeadFwd: (f5, f6) = where the head faces on the ground plane (x, z, length 1), from the two
+; eyes (right eye - left eye turned a quarter to the front); the tracking space's forward when an
+; eye is missing. Uses r0, r8, r10 and f1..f8 only.
+mtHeadFwd:
+lis r10, mtHandCam@ha
+addi r10, r10, mtHandCam@l
+lfs f5, 8(r10)
+fneg f5, f5
+lfs f6, 32(r10)
+fneg f6, f6
+lwz r0, 60(r10)
+cmpwi r0, 0
+beq mtHeadFwdDone
+lwz r0, 64(r10)
+cmpwi r0, 0
+beq mtHeadFwdDone
+lfs f7, 56(r10)
+lfs f3, 44(r10)
+fsubs f7, f7, f3
+lfs f8, 36(r10)
+lfs f3, 48(r10)
+fsubs f8, f8, f3
+fmuls f3, f7, f7
+fmuls f4, f8, f8
+fadds f3, f3, f4
+lis r8, mtHandW@ha
+addi r8, r8, mtHandW@l
+lfs f4, 124(r8)
+.int 0xFC032000 ; fcmpu cr0, f3, f4
+blt mtHeadFwdDone
+.int 0xFC801834 ; frsqrte f4, f3
+fmuls f1, f4, f4
+fmuls f1, f1, f3
+lfs f2, 128(r8)
+fmuls f1, f1, f2
+lfs f2, 132(r8)
+fsubs f1, f2, f1
+fmuls f4, f4, f1
+fmuls f1, f4, f4
+fmuls f1, f1, f3
+lfs f2, 128(r8)
+fmuls f1, f1, f2
+lfs f2, 132(r8)
+fsubs f1, f2, f1
+fmuls f4, f4, f1
+fmuls f5, f7, f4
+fmuls f6, f8, f4
+mtHeadFwdDone:
+blr
+
+; The player's effects (dust, grass, splashes, sparkles...) when the body is drawn somewhere else in
+; first person (turned with the view / standing under the pulled-back view, mtTurnKeep): every
+; actor effect goes through the game's effect objects, whose emitter sets carry two world matrices
+; (es+0x1E8 and es+0x218, 3x4, translation in the 4th column). The player's own effects (the
+; EffectKeepers at +0x54 of the costume actor and of the player object) get the same turn and move
+; as the body: once when an emitter is created (0x0251B2E8, the end of the create routine) and every
+; frame for effects that follow a joint or position (the keeper update's call at 0x02447C20).
+; Footprints and paw prints are pooled model actors placed once (0x0247BE7C): moved the same way.
+0x0251CA14 = mtFxAlive:
+0x0251A988 = mtFxUpdate:
+; r3 = a 3x4 matrix, r4 bits: 1 = turn its axes (rows 0 and 2 of columns 0..2), 2 = move its
+; translation (x at +12, z at +44). Uses r0, r11, r12, f0..f8 only.
+mtFxXf:
+lis r12, mtTurnKeep@ha
+addi r12, r12, mtTurnKeep@l
+lfs f5, 0(r12)
+lfs f6, 4(r12)
+andi. r0, r4, 1
+beq mtFxXfMove
+lfs f1, 0(r3)
+lfs f2, 32(r3)
+fmuls f3, f5, f1
+fmuls f4, f6, f2
+fadds f3, f3, f4
+fmuls f4, f5, f2
+fmuls f0, f6, f1
+fsubs f4, f4, f0
+stfs f3, 0(r3)
+stfs f4, 32(r3)
+lfs f1, 4(r3)
+lfs f2, 36(r3)
+fmuls f3, f5, f1
+fmuls f4, f6, f2
+fadds f3, f3, f4
+fmuls f4, f5, f2
+fmuls f0, f6, f1
+fsubs f4, f4, f0
+stfs f3, 4(r3)
+stfs f4, 36(r3)
+lfs f1, 8(r3)
+lfs f2, 40(r3)
+fmuls f3, f5, f1
+fmuls f4, f6, f2
+fadds f3, f3, f4
+fmuls f4, f5, f2
+fmuls f0, f6, f1
+fsubs f4, f4, f0
+stfs f3, 8(r3)
+stfs f4, 40(r3)
+mtFxXfMove:
+andi. r0, r4, 2
+beq mtFxXfDone
+lfs f1, 12(r3)
+lfs f2, 44(r3)
+mflr r0
+mr r11, r0
+bl mtFxTurnPoint
+mtlr r11
+stfs f3, 12(r3)
+stfs f4, 44(r3)
+mtFxXfDone:
+blr
+; r3 = a vec3: its x (+0) and z (+8) turned and moved
+mtFxVec:
+lis r12, mtTurnKeep@ha
+addi r12, r12, mtTurnKeep@l
+lfs f5, 0(r12)
+lfs f6, 4(r12)
+lfs f1, 0(r3)
+lfs f2, 8(r3)
+mflr r0
+mr r11, r0
+bl mtFxTurnPoint
+mtlr r11
+stfs f3, 0(r3)
+stfs f4, 8(r3)
+blr
+; (f1, f2) = a point's x, z -> (f3, f4) turned about (Tx, Tz) and moved to (Nx, Nz); r12 = mtTurnKeep
+mtFxTurnPoint:
+lfs f7, 8(r12)
+lfs f8, 12(r12)
+fsubs f1, f1, f7
+fsubs f2, f2, f8
+fmuls f3, f5, f1
+fmuls f4, f6, f2
+fadds f3, f3, f4
+fmuls f4, f5, f2
+fmuls f0, f6, f1
+fsubs f4, f4, f0
+lfs f7, 20(r12)
+lfs f8, 24(r12)
+fadds f3, f3, f7
+fadds f4, f4, f8
+blr
+; creation: the end of the effect object's create routine (r30 = effect, r31 = handle)
+mtFxEmit:
+lis r12, mtTurnKeep@ha
+addi r12, r12, mtTurnKeep@l
+lwz r0, 16(r12)
+cmpwi r0, 0
+beq mtFxEmitOut
+lwz r5, 28(r12)
+lis r6, mtHideModel@ha
+addi r6, r6, mtHideModel@l
+lwz r6, 12(r6)
+subf r5, r5, r6
+cmplwi r5, 2
+bgt mtFxEmitOut
+lis r6, mtFx@ha
+lwz r0, mtFx@l(r6)
+cmpwi r0, 0
+beq mtFxEmitOut
+; the effect must belong to one of the player's two keepers
+li r9, 0
+lis r7, mtHideHost@ha
+lwz r7, mtHideHost@l(r7)
+lis r11, 0x1000
+cmplw r7, r11
+blt mtFxEmitK2
+lis r11, 0x5000
+cmplw r7, r11
+bge mtFxEmitK2
+andi. r0, r7, 3
+bne mtFxEmitK2
+lwz r7, 0x54(r7)
+lis r11, 0x1000
+cmplw r7, r11
+blt mtFxEmitK2
+lis r11, 0x5000
+cmplw r7, r11
+bge mtFxEmitK2
+andi. r0, r7, 3
+bne mtFxEmitK2
+mr r3, r7
+bl mtFxOwned
+cmpwi r3, 0
+bne mtFxEmitMine
+mtFxEmitK2:
+lis r7, mtHideActor@ha
+lwz r7, mtHideActor@l(r7)
+lis r11, 0x1000
+cmplw r7, r11
+blt mtFxEmitOut
+lis r11, 0x5000
+cmplw r7, r11
+bge mtFxEmitOut
+andi. r0, r7, 3
+bne mtFxEmitOut
+lwz r7, 0x54(r7)
+lis r11, 0x1000
+cmplw r7, r11
+blt mtFxEmitOut
+lis r11, 0x5000
+cmplw r7, r11
+bge mtFxEmitOut
+andi. r0, r7, 3
+bne mtFxEmitOut
+mr r3, r7
+bl mtFxOwned
+cmpwi r3, 0
+beq mtFxEmitOut
+mtFxEmitMine:
+mr r3, r31
+bl mtFxAlive
+cmpwi r3, 0
+beq mtFxEmitOut
+lwz r7, 4(r31)
+lwz r7, 0(r7)
+lwz r6, 0xC(r30)
+lbz r0, 0x4A(r6)
+li r4, 3
+cmpwi r0, 0
+beq mtFxEmitMode
+li r4, 2
+mtFxEmitMode:
+addi r3, r7, 0x1E8
+bl mtFxXf
+addi r3, r7, 0x218
+bl mtFxXf
+lis r12, mtFx@ha
+addi r12, r12, mtFx@l
+lwz r8, 8(r12)
+addi r8, r8, 1
+stw r8, 8(r12)
+mtFxEmitOut:
+lwz r28, 8(r1)
+b mtFxEmitRet
+0x0251B2EC = mtFxEmitRet:
+0x0251B2E8 = ba mtFxEmit
+; r3 = keeper, r30 = effect: r3 = 1 when the effect is one of the keeper's (uses r0, r5, r6, r8)
+mtFxOwned:
+lwz r5, 4(r3)
+cmplwi r5, 400
+bgt mtFxOwnedNo
+lwz r6, 8(r3)
+lis r8, 0x1000
+cmplw r6, r8
+blt mtFxOwnedNo
+lis r8, 0x5000
+cmplw r6, r8
+bge mtFxOwnedNo
+mtFxOwnedLoop:
+cmpwi r5, 0
+ble mtFxOwnedNo
+lwz r0, 0(r6)
+cmpw r0, r30
+beq mtFxOwnedYes
+addi r6, r6, 4
+addi r5, r5, -1
+b mtFxOwnedLoop
+mtFxOwnedYes:
+li r3, 1
+blr
+mtFxOwnedNo:
+li r3, 0
+blr
+
+; every frame: the keeper update's per-effect call (r3 = effect; r31 = the keeper, kept)
+mtFxFollow:
+mflr r0
+stwu r1, -0x20(r1)
+stw r0, 0x24(r1)
+stw r3, 8(r1)
+bl mtFxUpdate
+stw r3, 12(r1)
+lis r12, mtTurnKeep@ha
+addi r12, r12, mtTurnKeep@l
+lwz r0, 16(r12)
+cmpwi r0, 0
+beq mtFxFollowOut
+lwz r5, 28(r12)
+lis r6, mtHideModel@ha
+addi r6, r6, mtHideModel@l
+lwz r6, 12(r6)
+subf r5, r5, r6
+cmplwi r5, 2
+bgt mtFxFollowOut
+lis r6, mtFx@ha
+lwz r0, mtFx@l(r6)
+cmpwi r0, 0
+beq mtFxFollowOut
+lis r7, mtHideHost@ha
+lwz r7, mtHideHost@l(r7)
+lis r11, 0x1000
+cmplw r7, r11
+blt mtFxFollowK2
+lis r11, 0x5000
+cmplw r7, r11
+bge mtFxFollowK2
+andi. r0, r7, 3
+bne mtFxFollowK2
+lwz r7, 0x54(r7)
+lis r11, 0x1000
+cmplw r7, r11
+blt mtFxFollowK2
+lis r11, 0x5000
+cmplw r7, r11
+bge mtFxFollowK2
+andi. r0, r7, 3
+bne mtFxFollowK2
+cmpw r7, r31
+beq mtFxFollowMine
+mtFxFollowK2:
+lis r7, mtHideActor@ha
+lwz r7, mtHideActor@l(r7)
+lis r11, 0x1000
+cmplw r7, r11
+blt mtFxFollowOut
+lis r11, 0x5000
+cmplw r7, r11
+bge mtFxFollowOut
+andi. r0, r7, 3
+bne mtFxFollowOut
+lwz r7, 0x54(r7)
+lis r11, 0x1000
+cmplw r7, r11
+blt mtFxFollowOut
+lis r11, 0x5000
+cmplw r7, r11
+bge mtFxFollowOut
+andi. r0, r7, 3
+bne mtFxFollowOut
+cmpw r7, r31
+bne mtFxFollowOut
+mtFxFollowMine:
+lwz r5, 8(r1)
+lwz r6, 0xC(r5)
+lis r11, 0x1000
+cmplw r6, r11
+blt mtFxFollowOut
+lis r11, 0x5000
+cmplw r6, r11
+bge mtFxFollowOut
+andi. r0, r6, 3
+bne mtFxFollowOut
+; follows a matrix (and no billboard): turn + move; follows a position or billboards: move only
+lbz r0, 0x4D(r6)
+lbz r8, 0x4C(r6)
+add r8, r8, r0
+cmpwi r8, 0
+beq mtFxFollowOut
+li r4, 2
+cmpwi r0, 0
+beq mtFxFollowMode
+lbz r0, 0x4A(r6)
+cmpwi r0, 0
+bne mtFxFollowMode
+li r4, 3
+mtFxFollowMode:
+lwz r6, 4(r5)
+lwz r7, 8(r5)
+cmplwi r7, 16
+bgt mtFxFollowOut
+mtFxFollowLoop:
+cmpwi r7, 0
+ble mtFxFollowOut
+lwz r3, 0(r6)
+bl mtFxAlive
+cmpwi r3, 0
+beq mtFxFollowNext
+lwz r3, 0(r6)
+lwz r3, 4(r3)
+lwz r10, 0(r3)
+addi r3, r10, 0x1E8
+bl mtFxXf
+addi r3, r10, 0x218
+bl mtFxXf
+lis r12, mtFx@ha
+addi r12, r12, mtFx@l
+lwz r8, 12(r12)
+addi r8, r8, 1
+stw r8, 12(r12)
+mtFxFollowNext:
+addi r6, r6, 4
+addi r7, r7, -1
+b mtFxFollowLoop
+mtFxFollowOut:
+lwz r3, 12(r1)
+lwz r0, 0x24(r1)
+mtlr r0
+addi r1, r1, 0x20
+blr
+0x02447C20 = bla mtFxFollow
+
+; footprints / paw prints (only the player's code places them): their rotation (r1+0x188) and
+; place (r1+0xBC) turned and moved like the body; the height stays the ground's
+mtFootXf:
+lis r12, mtTurnKeep@ha
+addi r12, r12, mtTurnKeep@l
+lwz r0, 16(r12)
+cmpwi r0, 0
+beq mtFootOut
+lwz r5, 28(r12)
+lis r6, mtHideModel@ha
+addi r6, r6, mtHideModel@l
+lwz r6, 12(r6)
+subf r5, r5, r6
+cmplwi r5, 2
+bgt mtFootOut
+lis r6, mtFx@ha
+lwz r0, mtFx@l(r6)
+cmpwi r0, 0
+beq mtFootOut
+lis r6, mtFx@ha
+addi r6, r6, mtFx@l
+lwz r0, 4(r6)
+cmpwi r0, 0
+beq mtFootOut
+addi r3, r1, 0x188
+li r4, 1
+bl mtFxXf
+addi r3, r1, 0xBC
+bl mtFxVec
+lis r12, mtFx@ha
+addi r12, r12, mtFx@l
+lwz r8, 16(r12)
+addi r8, r8, 1
+stw r8, 16(r12)
+mtFootOut:
+addi r4, r1, 0x188
+b mtFootRet
+0x0247BE80 = mtFootRet:
+0x0247BE7C = ba mtFootXf
+
+; Rumble. The game's rumble manager starts a pattern on a controller's rumble part by calling
+; 0x0238D488 (r3 = the part, r4 = the pattern, r5 = loops) at 0x02496C00, once per rumble event;
+; r31 is the pattern's table entry (+0 its priority: 0 strong, 1 medium, 2 weak, 3 very weak,
+; 4 pulsed, 5 pulsed weak), r25 the player port. That call comes here: it does what 0x0238D488
+; does and records the event in mtRumble for the VR layer, which vibrates the Quest controllers.
+mtRumble:
+stw r5, 0x1C(r3)
+li r0, 0
+stw r4, 0x14(r3)
+stw r0, 0x18(r3)
+lis r12, mtRumbleData@ha
+addi r12, r12, mtRumbleData@l
+lwz r11, 8(r12)
+addi r11, r11, 1
+stw r11, 8(r12)
+stw r25, 12(r12)
+lwz r0, 0(r31)
+stw r0, 4(r12)
+lwz r11, 0(r12)
+addi r11, r11, 1
+stw r11, 0(r12)
+mtRumbleDone:
+blr
+0x02496C00 = bla mtRumble
+
+; Aiming powers with the right controller, like the fireball.
+; mtVrGroundDir: in the original first person with the right controller tracked, (f0, f2) = where it
+; points on the ground plane (x, z, length 1) and r12 = 1; otherwise r12 = 0. Uses r0, r9..r12 and
+; f0..f6 only (r3..r8 are the callers').
+mtVrGroundDir:
+li r12, 0
+lis r11, mtHandCtl@ha
+addi r11, r11, mtHandCtl@l
+lwz r0, 0(r11)
+cmpwi r0, 0
+beq mtVrDirNo
+lis r9, mtHandW@ha
+addi r9, r9, mtHandW@l
+lwz r0, 100(r9)
+cmpwi r0, 0
+beq mtVrDirNo
+lis r10, mtEyeBack@ha
+lwz r0, mtEyeBack@l(r10)
+cmpwi r0, 0
+bne mtVrDirNo
+lis r10, mtControl@ha
+addi r10, r10, mtControl@l
+lwz r0, 28(r10)
+cmpwi r0, 1
+bne mtVrDirNo
+lis r10, mtPad@ha
+addi r10, r10, mtPad@l
+lwz r0, 88(r10)
+cmpwi r0, 1
+bne mtVrDirNo
+lfs f0, 112(r9)
+lfs f2, 120(r9)
+fmuls f3, f0, f0
+fmuls f4, f2, f2
+fadds f3, f3, f4
+lfs f4, 124(r9)
+.int 0xFC032000 ; fcmpu cr0, f3, f4
+blt mtVrDirNo
+.int 0xFC801834 ; frsqrte f4, f3
+fmuls f5, f4, f4
+fmuls f5, f5, f3
+lfs f6, 128(r9)
+fmuls f5, f5, f6
+lfs f6, 132(r9)
+fsubs f5, f6, f5
+fmuls f4, f4, f5
+fmuls f5, f4, f4
+fmuls f5, f5, f3
+lfs f6, 128(r9)
+fmuls f5, f5, f6
+lfs f6, 132(r9)
+fsubs f5, f6, f5
+fmuls f4, f4, f5
+fmuls f0, f0, f4
+fmuls f2, f2, f4
+li r12, 1
+mtVrDirNo:
+blr
+
+; Boomerang (boomerang suit): the throw (0x0229B3F0) sets the boomerang's velocity from the
+; player's forward axis times its speed at 0x20(r1) and calls the launch routine at 0x0229B468,
+; which takes the flight direction and the start point from that vector. The call comes here: for
+; the player's own boomerang ([boomerang+0xE0] = the player) the velocity becomes where the right
+; controller points (ground plane) times the same speed. r3/r4/r5 are the launch's arguments.
+0x0229AFE0 = mtBoomLaunch:
+mtBoomDir:
+mflr r8
+lis r6, mtPower@ha
+lwz r0, mtPower@l(r6)
+cmpwi r0, 0
+beq mtBoomDirGo
+lwz r6, 0xE0(r31)
+lis r7, mtHideActor@ha
+lwz r7, mtHideActor@l(r7)
+cmpw r6, r7
+bne mtBoomDirGo
+bl mtVrGroundDir
+cmpwi r12, 0
+beq mtBoomDirGo
+lwz r6, 0x84(r31)
+lwz r6, 0x10(r6)
+lfs f7, 0(r6)
+fmuls f0, f0, f7
+fmuls f2, f2, f7
+stfs f0, 0x20(r1)
+li r0, 0
+stw r0, 0x24(r1)
+stfs f2, 0x28(r1)
+lis r6, mtPower@ha
+addi r6, r6, mtPower@l
+lwz r7, 16(r6)
+addi r7, r7, 1
+stw r7, 16(r6)
+mtBoomDirGo:
+mtlr r8
+b mtBoomLaunch
+0x0229B468 = bla mtBoomDir
+
+; ... and the boomerang starts from the right glove's palm (the launch just wrote its position at r3;
+; the game's wall check that follows then works on the palm).
+mtBoomPos:
+mflr r8
+lis r6, mtPower@ha
+addi r6, r6, mtPower@l
+lwz r0, 4(r6)
+cmpwi r0, 0
+beq mtBoomPosDone
+lwz r6, 0xE0(r31)
+lis r7, mtHideActor@ha
+lwz r7, mtHideActor@l(r7)
+cmpw r6, r7
+bne mtBoomPosDone
+bl mtVrGroundDir
+cmpwi r12, 0
+beq mtBoomPosDone
+lis r11, mtHandCtl@ha
+addi r11, r11, mtHandCtl@l
+lfs f0, 76(r11)
+lfs f1, 56(r9)
+lfs f2, 60(r9)
+fmuls f1, f1, f0
+fadds f1, f1, f2
+stfs f1, 0(r3)
+lfs f1, 72(r9)
+lfs f2, 76(r9)
+fmuls f1, f1, f0
+fadds f1, f1, f2
+stfs f1, 4(r3)
+lfs f1, 88(r9)
+lfs f2, 92(r9)
+fmuls f1, f1, f0
+fadds f1, f1, f2
+stfs f1, 8(r3)
+mtBoomPosDone:
+mtlr r8
+mr r3, r30
+blr
+0x0229B144 = bla mtBoomPos
+
+; Cat dive (cat suit, the "BodyAttack"): its start (0x02250D8C) puts the flattened facing at 8(r1),
+; then (0x02250E28) turns Mario to it and sets the dive velocity from it. For the player's own dive
+; (the state's pose [[r31+4]] is the player's pose [[player+0xC0]]) the direction becomes where the
+; right controller points on the ground plane.
+mtCatDive:
+mflr r7
+lis r6, mtPower@ha
+addi r6, r6, mtPower@l
+lwz r0, 8(r6)
+cmpwi r0, 0
+beq mtCatDiveDone
+lwz r5, 4(r31)
+lwz r5, 0(r5)
+lis r4, mtHideActor@ha
+lwz r4, mtHideActor@l(r4)
+lwz r4, 0xC0(r4)
+lwz r4, 0(r4)
+cmpw r4, r5
+bne mtCatDiveDone
+bl mtVrGroundDir
+cmpwi r12, 0
+beq mtCatDiveDone
+stfs f0, 8(r1)
+li r0, 0
+stw r0, 0xC(r1)
+stfs f2, 0x10(r1)
+lis r6, mtPower@ha
+addi r6, r6, mtPower@l
+lwz r5, 20(r6)
+addi r5, r5, 1
+stw r5, 20(r6)
+mtCatDiveDone:
+mtlr r7
+lwz r8, 4(r31)
+blr
+0x02250E28 = bla mtCatDive
+
+; Stomp assist (first person). The air states' vertical step (0x0224E6B8) has just written the final
+; airborne velocity (r8 = the pose: position at +0, velocity at +0x24; r28 = the calculator, [r28+4]
+; its holder = [player+0xC0]; r29 -> the vertical speed, below 0 = falling) when its epilogue
+; (0x0224EAD4) comes here. While the local player falls in the original first person, the nearest
+; living enemy below him within reach (from the player's 'Eye' sensor contacts, a 200-unit sphere
+; the game fills every frame) pulls his horizontal velocity a little toward it: mtStomp+8 of the
+; horizontal distance per frame, only inside the radius (mtStomp+4, squared).
+mtStompAssist:
+lis r12, mtStomp@ha
+addi r12, r12, mtStomp@l
+lwz r3, 20(r12)
+addi r3, r3, 1
+stw r3, 20(r12)
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq mtStompDone
+lis r11, mtEyeBack@ha
+lwz r0, mtEyeBack@l(r11)
+cmpwi r0, 0
+bne mtStompDone
+lis r11, mtControl@ha
+addi r11, r11, mtControl@l
+lwz r0, 28(r11)
+cmpwi r0, 1
+bne mtStompDone
+lfs f0, 0(r29)
+fsubs f1, f0, f0
+; the block on the last stomped enemy counts down (air frames)
+lwz r3, 48(r12)
+cmpwi r3, 0
+ble mtStompCool
+addi r3, r3, -1
+stw r3, 48(r12)
+mtStompCool:
+.int 0xFC000800 ; fcmpu cr0, f0, f1
+blt mtStompFalling
+; going up right after a pull = the enemy was stomped (the bounce): that enemy is not a target again
+; for mtStomp+60 air frames, so the bounce does not come back down onto it for a second jump
+lwz r0, 56(r12)
+cmpwi r0, 0
+beq mtStompDone
+li r0, 0
+stw r0, 56(r12)
+lwz r0, 36(r12)
+stw r0, 52(r12)
+lwz r0, 60(r12)
+stw r0, 48(r12)
+b mtStompDone
+mtStompFalling:
+lwz r3, 24(r12)
+addi r3, r3, 1
+stw r3, 24(r12)
+lis r11, mtHideActor@ha
+lwz r11, mtHideActor@l(r11)
+lis r0, 0x1000
+cmplw r11, r0
+blt mtStompDone
+lis r0, 0x5000
+cmplw r11, r0
+bge mtStompDone
+andi. r0, r11, 3
+bne mtStompDone
+; the local player's: r8 is its pose ([[player+0xC0]]), or the calculator's holder is [player+0xC0]
+lwz r10, 0xC0(r11)
+lwz r9, 4(r28)
+cmpw r9, r10
+beq mtStompLocal
+lis r0, 0x1000
+cmplw r10, r0
+blt mtStompDone
+lis r0, 0x5000
+cmplw r10, r0
+bge mtStompDone
+andi. r0, r10, 3
+bne mtStompDone
+lwz r10, 0(r10)
+cmpw r10, r8
+bne mtStompDone
+mtStompLocal:
+lwz r3, 28(r12)
+addi r3, r3, 1
+stw r3, 28(r12)
+; the player's 'Eye' sensor (its name pointer is 0x103213F4)
+lwz r10, 0x4C(r11)
+lis r0, 0x1000
+cmplw r10, r0
+blt mtStompDone
+lis r0, 0x5000
+cmplw r10, r0
+bge mtStompDone
+andi. r0, r10, 3
+bne mtStompDone
+lwz r9, 4(r10)
+cmplwi r9, 32
+bgt mtStompDone
+lwz r10, 8(r10)
+lis r0, 0x1000
+cmplw r10, r0
+blt mtStompDone
+lis r0, 0x5000
+cmplw r10, r0
+bge mtStompDone
+andi. r0, r10, 3
+bne mtStompDone
+lis r7, 0x1032
+ori r7, r7, 0x13F4
+mtStompFindEye:
+cmpwi r9, 0
+ble mtStompDone
+lwz r6, 0(r10)
+addi r10, r10, 4
+addi r9, r9, -1
+lis r0, 0x1000
+cmplw r6, r0
+blt mtStompFindEye
+lis r0, 0x5000
+cmplw r6, r0
+bge mtStompFindEye
+andi. r0, r6, 3
+bne mtStompFindEye
+lwz r0, 0(r6)
+cmpw r0, r7
+bne mtStompFindEye
+lbz r0, 0x28(r6)
+cmpwi r0, 0
+beq mtStompDone
+lbz r0, 0x29(r6)
+cmpwi r0, 0
+beq mtStompDone
+lwz r3, 32(r12)
+addi r3, r3, 1
+stw r3, 32(r12)
+lhz r3, 0x1A(r6)
+stw r3, 44(r12)
+; its contacts: the nearest enemy below, horizontally (f6 = best distance squared, f7/f8 = its dx/dz)
+lhz r9, 0x1A(r6)
+cmplwi r9, 32
+bgt mtStompDone
+lwz r10, 0x1C(r6)
+lis r0, 0x1000
+cmplw r10, r0
+blt mtStompDone
+lis r0, 0x5000
+cmplw r10, r0
+bge mtStompDone
+andi. r0, r10, 3
+bne mtStompDone
+lfs f6, 4(r12)
+lfs f7, 16(r12)
+lfs f8, 16(r12)
+li r5, 0
+lfs f10, 0(r8)
+lfs f11, 4(r8)
+lfs f12, 8(r8)
+mtStompLoop:
+cmpwi r9, 0
+ble mtStompPick
+lwz r6, 0(r10)
+addi r10, r10, 4
+addi r9, r9, -1
+lis r0, 0x1000
+cmplw r6, r0
+blt mtStompLoop
+lis r0, 0x5000
+cmplw r6, r0
+bge mtStompLoop
+andi. r0, r6, 3
+bne mtStompLoop
+lwz r0, 4(r6)
+cmpwi r0, 5
+beq mtStompType
+cmpwi r0, 6
+beq mtStompType
+cmpwi r0, 10
+bne mtStompLoop
+mtStompType:
+lwz r3, 40(r12)
+addi r3, r3, 1
+stw r3, 40(r12)
+lwz r4, 0x2C(r6)
+lis r0, 0x1000
+cmplw r4, r0
+blt mtStompLoop
+lis r0, 0x5000
+cmplw r4, r0
+bge mtStompLoop
+andi. r0, r4, 3
+bne mtStompLoop
+mr r3, r4
+lwz r0, 48(r12)
+cmpwi r0, 0
+ble mtStompFree
+lwz r0, 52(r12)
+cmpw r0, r3
+beq mtStompLoop
+mtStompFree:
+lwz r4, 0x7C(r4)
+lis r0, 0x1000
+cmplw r4, r0
+blt mtStompLoop
+lis r0, 0x5000
+cmplw r4, r0
+bge mtStompLoop
+andi. r0, r4, 3
+bne mtStompLoop
+lbz r0, 0(r4)
+cmpwi r0, 0
+bne mtStompLoop
+lfs f2, 12(r6)
+fsubs f2, f2, f11
+lfs f3, 16(r12)
+.int 0xFC021800 ; fcmpu cr0, f2, f3
+bge mtStompLoop
+lfs f2, 8(r6)
+fsubs f2, f2, f10
+lfs f3, 16(r6)
+fsubs f3, f3, f12
+fmuls f4, f2, f2
+fmuls f5, f3, f3
+fadds f4, f4, f5
+.int 0xFC043000 ; fcmpu cr0, f4, f6
+bge mtStompLoop
+fmr f6, f4
+fmr f7, f2
+fmr f8, f3
+mr r7, r3
+li r5, 1
+b mtStompLoop
+mtStompPick:
+cmpwi r5, 0
+beq mtStompDone
+lfs f5, 8(r12)
+fmuls f7, f7, f5
+fmuls f8, f8, f5
+lfs f2, 0x24(r8)
+fadds f2, f2, f7
+stfs f2, 0x24(r8)
+lfs f2, 0x2C(r8)
+fadds f2, f2, f8
+stfs f2, 0x2C(r8)
+lwz r4, 12(r12)
+addi r4, r4, 1
+stw r4, 12(r12)
+stw r7, 36(r12)
+li r0, 1
+stw r0, 56(r12)
+mtStompDone:
+lmw r27, 0x44(r1)
+blr
+0x0224EAD4 = bla mtStompAssist
+
+; Picking things up in first person by touch. The player tries a pickup before a kick when one of
+; its sensors touches something (0x022892B4, then the kick at 0x0228A7AC); the pickup asks
+; "is the grab button (X/Y) held" at 0x02289430 and, if not, gives up so the object gets kicked.
+; In the original first person that answer is 'yes' for the touch (the touched sensor is kept in
+; mtGrab+0), so touching a shell, a ball or a block picks it up. While it is carried, the same
+; question (0x022916D8) keeps saying 'yes' until the grab button has been pressed and let go once
+; (a button or the hand-throw gesture, which presses X): then it is thrown, as usual.
+mtGrabTouch:
+lis r12, mtGrab@ha
+addi r12, r12, mtGrab@l
+lwz r0, 8(r12)
+cmpwi r0, 0
+beq mtGrabTouchOrig
+lis r11, mtEyeBack@ha
+lwz r0, mtEyeBack@l(r11)
+cmpwi r0, 0
+bne mtGrabTouchOrig
+lis r11, mtControl@ha
+addi r11, r11, mtControl@l
+lwz r0, 28(r11)
+cmpwi r0, 1
+bne mtGrabTouchOrig
+mflr r0
+stwu r1, -0x10(r1)
+stw r0, 0x14(r1)
+bctrl
+lwz r0, 0x14(r1)
+mtlr r0
+addi r1, r1, 0x10
+lis r12, mtGrab@ha
+addi r12, r12, mtGrab@l
+li r0, 0
+stw r0, 4(r12)
+cmpwi r3, 0
+bne mtGrabTouchReal
+stw r30, 0(r12)
+lwz r11, 12(r12)
+addi r11, r11, 1
+stw r11, 12(r12)
+li r3, 1
+blr
+mtGrabTouchReal:
+stw r0, 0(r12)
+blr
+mtGrabTouchOrig:
+bctr
+0x02289430 = bla mtGrabTouch
+
+mtGrabHold:
+mflr r0
+stwu r1, -0x10(r1)
+stw r0, 0x14(r1)
+bctrl
+lwz r0, 0x14(r1)
+mtlr r0
+addi r1, r1, 0x10
+lis r12, mtGrab@ha
+addi r12, r12, mtGrab@l
+lwz r11, 0(r12)
+cmpwi r11, 0
+beq mtGrabHoldDone
+lwz r10, 0x1C0(r31)
+cmpw r10, r11
+bne mtGrabHoldClear
+cmpwi r3, 0
+beq mtGrabHoldUp
+li r0, 1
+stw r0, 4(r12)
+li r3, 1
+blr
+mtGrabHoldUp:
+lwz r0, 4(r12)
+cmpwi r0, 0
+bne mtGrabHoldThrow
+li r3, 1
+blr
+mtGrabHoldThrow:
+li r3, 0
+mtGrabHoldClear:
+li r0, 0
+stw r0, 0(r12)
+stw r0, 4(r12)
+mtGrabHoldDone:
+blr
+0x022916D8 = bla mtGrabHold
+
+; ... and in the original first person a touch never kicks (the kick message at 0x0228A818 is not
+; sent), also when a pickup is refused
+0x024098E0 = mtKickSend:
+mtKickGate:
+lis r12, mtGrab@ha
+addi r12, r12, mtGrab@l
+lwz r0, 16(r12)
+cmpwi r0, 0
+beq mtKickGateSend
+lis r11, mtEyeBack@ha
+lwz r0, mtEyeBack@l(r11)
+cmpwi r0, 0
+bne mtKickGateSend
+lis r11, mtControl@ha
+addi r11, r11, mtControl@l
+lwz r0, 28(r11)
+cmpwi r0, 1
+bne mtKickGateSend
+li r3, 0
+blr
+mtKickGateSend:
+b mtKickSend
+0x0228A818 = bla mtKickGate
+
 ; The game asks its microphone manager three things about a 'sound': is there one right now
 ; (0x024BC810, a boolean), how loud is it (0x024BC8C4, a float in f1) and is the second sound
 ; flag set (0x024BC97C, a boolean). While mtMic+4 is 1 they answer for a loud blow, whatever the
@@ -9950,7 +11583,7 @@ mtHideMask:
 mtMenuTable:
 .int 0x4D56524D
 .int 1
-.int 8
+.int 13
 .int mtFpBody
 .int mtEyeFit
 .int mrSnapSin
@@ -9959,6 +11592,11 @@ mtMenuTable:
 .int mtEyeBackCtl
 .int mtHandCtl
 .int mtEyeBack
+.int mtControl
+.int mtCine
+.int mtRumbleData
+.int mtGlovePoses
+.int mtStomp
 ; Player body in the original first person (camera distance 0): each bit draws one shape of the
 ; player's own body model (bit 0 = first shape; Mario has 5, Peach 6), so looking down shows the
 ; body; 0 = hidden as in the original. The eyes, face and other parts stay hidden, the gloves
@@ -10057,6 +11695,104 @@ mtArmSave:
 ; mtHeadWrap's arm scratch (vectors, lengths) and constants 1.0, 0.05, 4.0 (the most an arm stretches)
 ; shadow hooks: magic 'MSHD', player-category masks while turned, of them the player's own, and
 ; the last matched mask's position (x, y, z)
+; mtThrow: 0 switch, throw direction follows the right controller (1 = on, 0 = the game's facing),
+; 4 switch, the carried object sits in the right glove (1 = on, 0 = between Mario's hands); runtime:
+; 12/16/20 the facing vector while replaced, 24 replaced flag, 28 the pose it belongs to; counters:
+; 32 throws by anyone, 36 throws aimed with the hand, 40 carried-object placements in the glove.
+mtThrow:
+.int 1
+.int 1
+.int 0x41200000 ; +8 the carried object sits this many glove units past the palm (float, 10)
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 1 ; +44 1 = thrown straight where the head faces, 0 = where the right controller points
+.int 1 ; +48 1 = held ahead of the hand (along the head's facing), 0 = along the glove's fingers
+.int 0x42340000 ; +52 how far ahead of the wrist (float, 45 units, about 30 cm)
+.int 0x41200000 ; +56 how far below the wrist (float, 10 units)
+.int 0x3F000000 ; +60 0.5
+; mtFx: 0 switch (1 = the player's effects go with the body drawn under the view, 0 = where the
+; game has them), 4 footprints too (1 / 0); counters: 8 emitters moved at creation, 12 follow
+; updates moved, 16 footprints moved.
+mtFx:
+.int 1
+.int 1
+.int 0
+.int 0
+.int 0
+; mtRumbleData: 0 how many rumble events player 1's controller got (the VR layer vibrates on each
+; new one), 4 the last one's priority (0 strong .. 5 pulsed weak).
+; mtPower: switches (1 on / 0 off) 0 the boomerang flies where the right controller points, 4 it
+; starts from the right glove, 8 the cat dive goes where the right controller points; counters 16
+; boomerangs aimed, 20 cat dives aimed.
+mtPower:
+.int 1
+.int 1
+.int 1
+.int 0
+.int 0
+.int 0
+; mtGlovePoses: the glove mesh shown while the grip is held (0 = tight fist), while only the trigger is
+; held (1 = half-closed; 4 = flat, 3 = open...), and the switch (1 on, 0 = always the game's pose).
+mtGlovePoses:
+.int 0
+.int 1
+.int 1
+.int 0 ; +12 shape queries answered with a forced pose (diagnostics)
+.int 3 ; +16 the mesh while nothing is held (3 = open hand; -1 = the game's own pose)
+; (mtRumbleData +8 rumble starts for any port, +12 the last one's port: diagnostics)
+; mtShLook: the player's shadow in first person: size factor (1.3), colour factor (0.6: darker), then
+; the colour handed on (runtime, 4 floats).
+mtShLook:
+.int 0x3FA66666
+.int 0x3F19999A
+.int 0
+.int 0
+.int 0
+.int 0
+; mtGrab: 0 the sensor picked up by touch (runtime), 4 the grab button was pressed while holding it
+; (runtime), 8 switch: pick up by touch in first person (1 / 0), 12 pickups by touch (counter),
+; 16 switch: no kicking by touch in first person (1 / 0).
+mtGrab:
+.int 0
+.int 0
+.int 1
+.int 0
+.int 1
+; mtStomp: stomp assist in first person: 0 switch (1 / 0), 4 reach (horizontal distance squared,
+; 14400 = 120 units), 8 how much of the horizontal distance to the enemy is added to the velocity
+; per frame while falling (float, 0.08), 12 frames it pulled (counter).
+mtStomp:
+.int 1
+.int 0x46610000
+.int 0x3DA3D70A
+.int 0
+.int 0 ; +16 0.0
+; diagnostics: +20 calls, +24 falling in first person, +28 the local player's, +32 its Eye sensor
+; found, +36 the enemy last pulled toward (its owner), +40 enemy contacts seen, +44 the last contact
+; count; +48 air frames the block lasts still, +52 the blocked enemy, +56 1 = pulled since the last
+; rise, +60 how long a stomped enemy stays blocked (air frames, 90)
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 90
+mtRumbleData:
+.int 0
+.int 0
+.int 0
+.int 0
 mtShStat:
 .int 0x4D534844
 .int 0
@@ -10225,13 +11961,23 @@ mtPartSave:
 .int 0
 .int 0
 ; first-person eye height from the character's neck: factor (145 / Mario's 99.5), easing per step,
-; lowest, highest, on (1) / off (0 = always Mario's 145)
+; lowest, highest, on (1) / off (0 = Mario's 145, +24), then +20 a fine adjustment added to either
 mtEyeFit:
 .int 0x3FBA885D
 .int 0x3D4CCCCD
 .int 0x42480000
-.int 0x437A0000
+.int 0x453B8000
 .int 1
+.int 0x00000000 ; +20 fine adjustment, game units (float; the menu sets it)
+.int 0x43110000 ; +24 the height when off (145)
+.int 0 ; +28 highest neck height seen (runtime)
+.int 0 ; +32 its skeleton (runtime)
+.int 0x3C23D70A ; +36 how much that height is lowered per step (0.01 units)
+.int 0x3F800000 ; +40 1.0 (constants for the model scale)
+.int 0x3F000000 ; +44 0.5
+.int 0x358637BD ; +48 1e-6
+.int 0x3FC00000 ; +52 1.5
+.int 0x3F800000 ; +56 the body model's scale last measured (runtime; the gloves grow with it)
 mtArmTmp:
 .int 0
 .int 0
@@ -10499,7 +12245,7 @@ mtEyeBackLock:
 ; first person (float, game units; 150 = about 1 m, 0 switches it off), mtFpBack the current amount
 ; (runtime, put back by the launcher from fp-distance.txt).
 mtFpBackMax:
-.int 0x43160000
+.int 0x00000000
 mtFpBack:
 .int 0x00000000 ; @FP_DIST
 mtEyeBackCtl:
@@ -10806,7 +12552,7 @@ mtHandOff:
 .int 0x00000000
 .int 0x00000000
 
-; Attack gesture, right controller only. The right hand's position relative to the head is watched
+; Attack gesture (the right controller here; the left one has the same, see mtSwingL). The right hand's position relative to the head is watched
 ; once per pad read. Mode 2 (a fishing cast): the hand first moves toward the head fast enough
 ; (wind-up, remembered for a short time), then away from it fast enough (the cast), and that
 ; presses the game's X - the run/attack button, the same one the right controller's B sends -
@@ -10821,6 +12567,34 @@ mtHandOff:
 ; Speeds are in controller-position units per pad read (about 1500 units = 1 m; the pad is read once
 ; per game frame, 60 or 120 times a second by preset: 20 units = 0.8 to 1.6 m/s). Floats: 4, 44, 48, 52.
 mtSwing:
+.int 2
+.int 0x44FD2000
+.int 4
+.int 24
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0x42800000
+.int 0x43C80000
+.int 0x46AFC800
+.int 45
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+; mtSwingL: the attack gesture for the left controller, same layout as mtSwing (0 = mode, 2 = the
+; cast; 0 = off).
+mtSwingL:
 .int 2
 .int 0x44FD2000
 .int 4

@@ -270,23 +270,7 @@ if (Test-Path -LiteralPath $cameraFile) {
     }
 }
 
-# The first-person pull-back chosen last time (fp-distance.txt, saved by Watch-Perf.ps1) likewise.
-$fpFile = Join-Path $root 'fp-distance.txt'
-if (Test-Path -LiteralPath $fpFile) {
-    try {
-        $patchCopy = Join-Path $packRoot 'Mario3DWorld_VR\patch_vr.asm'
-        $savedFp = [double]::Parse(([IO.File]::ReadAllText($fpFile)).Trim(), [Globalization.CultureInfo]::InvariantCulture)
-        if ($savedFp -ge 0 -and $savedFp -le 600) {
-            $bits = [BitConverter]::ToUInt32([BitConverter]::GetBytes([single] $savedFp), 0)
-            $patchText = [IO.File]::ReadAllText($patchCopy)
-            $patchText = [regex]::Replace($patchText, '\.int 0x[0-9A-Fa-f]+( ; @FP_DIST)', ('.int 0x' + $bits.ToString('X8') + '$1'))
-            [IO.File]::WriteAllText($patchCopy, $patchText, (New-Object System.Text.UTF8Encoding($false)))
-            Say ('Camera:   first-person pull-back from last time: ' + [string]::Format([Globalization.CultureInfo]::InvariantCulture, '{0:F0}', $savedFp))
-        }
-    } catch {
-        Say ('Could not restore the first-person pull-back: ' + $_.Exception.Message)
-    }
-}
+# (The first-person pull-back is switched off; nothing to put back for it.)
 
 # --- settings: backup, enable packs, Vulkan ---------------------------------
 $backupDir = Join-Path $data 'Mario3DWorld-VR-backups'
@@ -402,7 +386,7 @@ try {
         try {
             $samplerArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', ('"' + $sampler + '"'),
                              '-CemuPid', [string] $cemu.Id, '-Out', ('"' + $perfCsv + '"'),
-                             '-PresetFile', ('"' + $handPresetFile + '"'), '-DiagOut', ('"' + $diagTxt + '"'), '-CameraFile', ('"' + $cameraFile + '"'), '-FpFile', ('"' + $fpFile + '"'))
+                             '-PresetFile', ('"' + $handPresetFile + '"'), '-DiagOut', ('"' + $diagTxt + '"'), '-CameraFile', ('"' + $cameraFile + '"'))
             [void] (Start-Process -FilePath 'powershell.exe' -ArgumentList $samplerArgs -WindowStyle Hidden -PassThru)
         } catch { $perfCsv = $null }
     } else { $perfCsv = $null }

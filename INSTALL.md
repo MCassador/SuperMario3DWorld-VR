@@ -48,19 +48,30 @@ Os controles VR agem como o GamePad.
 
 **Menu de opções VR:** aperte **B + Y juntos** para abrir (ou fechar) um menu na sua frente.
 Enquanto ele está aberto o jogo não recebe os botões nem os analógicos (o Mario fica parado).
-Analógico para cima/baixo escolhe a opção; **A** muda o valor (X volta um); B ou B + Y fecha.
-No rodapé: "Feito por: MCassador". Opções: corpo na 1ª pessoa (a cabeça fica sempre
-escondida), corpo gira com a visão, braços (do jogo ou
-até as luvas), corpo acompanha a câmera, altura dos olhos, giro com o analógico (suave, 30°,
-45°, 55°, 60°, 90°), afastamento máximo na 1ª pessoa, distância da câmera atrás, tamanho das
-luvas e luvas VR ligadas/desligadas. Cada mudança vale na hora e fica salva em
-`layer\vr-menu.ini` (só o que foi mudado pelo menu; apague o arquivo para voltar ao padrão do
+Analógico para os lados troca de aba (Corpo, Visão, Controles, Créditos); para cima/baixo
+escolhe a opção; **A** muda o valor (X volta um); B ou B + Y fecha. No rodapé: "Feito por:
+MCassador".
+- **Corpo:** corpo na 1ª pessoa (a cabeça fica sempre escondida), corpo gira com a visão,
+  braços (do jogo ou até as luvas), corpo acompanha a câmera, tamanho das luvas, luvas VR.
+- **Visão:** recentralizar a visão (A; o lugar e a direção para onde você olha viram o centro),
+  altura dos olhos (por personagem ou a do Mario), ajuste da altura (-30 a +30 unidades, em
+  `mtEyeFit+20`), tamanho do mundo (75% a 200%; maior = o mundo parece maior; muda a escala da
+  camada VR, então os gestos também escalam), giro com o analógico (suave, 30°, 45°, 55°, 60°,
+  90°), afastamento máximo na 1ª pessoa, distância da câmera atrás, vinheta ao andar
+  (desligada, fraca, média, forte: escurece as bordas da visão na 1ª pessoa enquanto o
+  analógico esquerdo move o personagem, para reduzir enjoo), tamanho e distância do HUD.
+
+Cada mudança vale na hora e fica salva em
+`layerr-menu.ini` (só o que foi mudado pelo menu; apague o arquivo para voltar ao padrão do
 patch). A distância da câmera atrás é guardada pelo launcher, como antes. O menu é desenhado
 pela `cemuvr_layer.dll` e acha os ajustes do patch pela tabela `mtMenuTable` (marca `MVRM`).
 
-- mão esquerda: X corre, Y arremessa, o gatilho é ZL, o grip é L, o botão de
+- mão esquerda: X corre, Y arremessa, o gatilho é ZL, o grip é L (e fecha a luva), o botão de
   menu é Plus, o clique do analógico é Minus
-- mão direita: A pula, B corre, o gatilho é B, o grip é R
+- mão direita: A pula, B corre, o gatilho é B, o grip é R (e fecha a luva)
+- na primeira pessoa, **encostar** num casco, bola, bloco etc. já pega (sem botão) e nunca chuta
+  (`mtGrab`: ganchos `0x02289430`, `0x022916D8`, `0x0228A818`); para arremessar, aperte e solte o
+  botão de correr ou faça o gesto de jogar a mão
 - analógico esquerdo move, analógico direito olha
 - segure o controle esquerdo perto da sua cabeça: enquanto ele estiver lá, o
   analógico direito age como a cruzeta (D-pad) e para de girar a visão, e um
@@ -105,11 +116,9 @@ modificações feitas por **MCassador**:
   (1 = ligado), 4 (float) quanto por leitura do controle num empurrão total (1,5 unidades
   de jogo; 150 unidades são 1 m), 8 e 12 (floats) a distância mínima e máxima (80 e 600),
   16 (float) a zona morta (0,25). A distância escolhida fica lembrada: trocar para a primeira pessoa ou o diorama e voltar ao passo 200 volta nela, e o `Start-VR` a devolve na próxima sessão (arquivo `camera-distance.txt` ao lado dele; apague-o para voltar aos 200).
-  Na primeira pessoa original o mesmo analógico **recua a visão** sem sair da primeira pessoa:
-  o Mario continua invisível, as luvas continuam nas suas mãos e a bola de fogo sai da luva;
-  empurrar pra frente até o fim volta exatamente para os olhos. O máximo é `mtFpBackMax`
-  (float, padrão 150 = cerca de 1 m; 0 desliga) e o valor fica lembrado entre sessões no
-  arquivo `fp-distance.txt` (apague para voltar aos olhos).
+  Na primeira pessoa original o analógico para trás/frente **não faz nada**: o recuo da visão
+  (`mtFpBackMax`, `mtFpBack`) foi desligado (máximo 0), porque movia o corpo e os efeitos em vez
+  de só abrir a visão. Para voltar a ligar, ponha um máximo em `mtFpBackMax` (float, 150 = 1 m).
   A distância não acompanha a inclinação da sua visão (olhar para cima costumava jogar a
   câmera para baixo, em direção ao chão): ela vai reto para trás, nivelada, e a parte além
   de 200 também sobe. Na distância 0 (a primeira pessoa original) nada muda.
@@ -235,6 +244,56 @@ modificações feitas por **MCassador**:
   0,65 e 0,35 para desligar isso. Cenas que acontecem dentro de uma fase com o jogador ainda
   no controle (o mastro na chegada, a introdução de um chefe) não são pegas e mantêm a
   distância normal.
+- `mtSwingL` - o gesto de ataque com o controle esquerdo (mesmo formato de `mtSwing`; palavra 0
+  `2` = ligado, agora; `0` = só o direito). As duas mãos apertam o X do jogo.
+- `mtGlovePoses` - pose das luvas pelos botões. Cada luva do jogo tem 7 malhas de mão inteiras
+  (0 punho fechado, 1 meio fechada, 2 pegando, 3 aberta, 4 reta, 5 dedos para cima, 6 relaxada) e o
+  jogo mostra uma. No teste de visibilidade de forma (`0x024E7758`, `mtHideShape`), com o grip
+  segurado só a malha da palavra 0 (`0`, punho) aparece, só com o gatilho a da palavra 4 (`1`, meio
+  fechada); sem nada, a malha da palavra 16 (`3`, mão aberta; `-1` = a escolha do jogo). Palavra 8:
+  `1` ligado (agora) / `0` (menu: aba Corpo).
+  Não existe malha de dedo apontando nas luvas do jogo.
+- `mtPower` - poderes mirados com o controle direito (primeira pessoa, controle rastreado), no plano
+  do chão como a bola de fogo. Palavras: 0 bumerangue voa para onde o controle aponta (gancho no
+  lançamento `0x0229B468`, velocidade = direção × a velocidade do próprio bumerangue), 4 o
+  bumerangue sai da palma da luva direita (`0x0229B144`, antes da checagem de parede do jogo), 8 o
+  mergulho do gato vai para onde o controle aponta (`0x02250E28`, vale para a direção do Mario e a
+  velocidade do mergulho). `1` = ligado (agora), `0` = o jogo. Contadores em 16 e 20.
+- `mtRumbleData` - vibração: o gancho `0x02496C00` (onde o gerenciador de vibração do jogo começa
+  um padrão) conta os eventos do jogador 1 (palavra 0) e guarda a prioridade do último (palavra 4:
+  0 forte, 1 médio, 2 fraco, 3 muito fraco, 4/5 pulsado). A camada VR vibra os dois controles a
+  cada evento novo (força e duração pela prioridade, vezes a opção **Vibração** do menu).
+- Aba **Conforto** do menu (tudo na `cemuvr_layer.dll`): **HUD no pulso esquerdo** - o HUD some da
+  frente e aparece pequeno (0,30 m) em cima do controle esquerdo quando você o levanta na frente
+  do rosto (18 a 60 cm) e olha para ele; **agachar de verdade** - na primeira pessoa, com a cabeça
+  30 cm abaixo da altura em pé (volta a 22 cm), o jogo recebe ZL segurado; **cenas do jogo numa
+  tela fixa** - enquanto o patch indica uma cena (`mtCine`, 11ª entrada da `mtMenuTable`), a
+  imagem vai para uma tela parada na sala e o jogo desenha do centro, sem seguir a cabeça.
+- `mtThrow` - arremessar o que o Mario carrega com a mão (primeira pessoa, controle direito
+  rastreado). Palavra 0: `1` (agora) a direção do arremesso é para onde o controle direito aponta
+  (no plano do chão, como a bola de fogo), `0` a direção do Mario. Palavra 4: `1` (agora) o objeto
+  carregado fica na luva (a esquerda se só o grip esquerdo estiver segurado, senão a direita),
+  `mtThrow+8` unidades de luva além da palma (float, 10), `0` entre as mãos do Mario. Palavra 44: `1` (agora) o
+  arremesso vai reto para a frente do corpo (a frente virada com o analógico), `0` para onde o
+  controle direito aponta. Palavra 48: `1` (agora) o objeto fica na frente do peito, centrado no
+  corpo (`+52` = 60 unidades à frente dos olhos, `+56` = 50 abaixo), `0` na luva. Ganchos: o
+  envio da mensagem de arremesso em `0x02291680` / `0x02291730` (a direção do Mario é trocada só
+  durante a chamada e depois devolvida) e a posição de carregar em `0x022FFA58`. Contadores em 32
+  (arremessos), 36 (arremessos mirados com a mão) e 40 (vezes que o objeto foi posto na luva).
+- `mtStomp` - ajuda para pisar nos inimigos na primeira pessoa: enquanto o Mario cai, o inimigo vivo
+  mais perto embaixo dele (até 120 unidades na horizontal, `+4` = 14400 ao quadrado) puxa a
+  velocidade horizontal um pouco na direção dele (`+8`, 0,08 da distância por quadro). Os inimigos
+  vêm dos contatos do sensor "Eye" do jogador (esfera de 200). Gancho no fim do passo vertical dos
+  estados de pulo/queda `0x0224EAD4`. Palavra 0: `1` ligado / `0`; contador em 12.
+- `mtShLook` - na primeira pessoa a sombra do jogador fica 30% maior (`+0`, float 1,3) e mais
+  escura (`+4`, cor × 0,6), para ver melhor onde você vai cair.
+- `mtFx` - os efeitos do jogador (poeira, grama, respingos, brilhos) e as pegadas acompanham o
+  corpo desenhado embaixo da visão na primeira pessoa (mesmo giro e deslocamento do corpo e da
+  sombra). Palavra 0: `1` (agora) efeitos, `0` desligado; palavra 4: `1` (agora) pegadas também.
+  Ganchos: fim da criação de um efeito `0x0251B2E8`, atualização por quadro dos efeitos que
+  seguem uma junta `0x02447C20`, e a colocação das pegadas `0x0247BE7C`. Só os efeitos dos dois
+  "EffectKeepers" do jogador (roupa e objeto do jogador, `+0x54`) são mexidos. Contadores em 8
+  (efeitos movidos ao criar), 12 (atualizações movidas) e 16 (pegadas movidas).
 - `mtMic` - soprar no microfone do GamePad (fases do Capitão Toad e os inimigos e objetos
   que reagem a som). Segure a **mão esquerda perto da sua boca** - perto do ponto entre seus
   olhos e não acima dele - por um instante: o jogo é avisado de que um sopro forte está
@@ -291,6 +350,12 @@ modificações feitas por **MCassador**:
   (osso `Head` menos a raiz) vezes o fator (`0x3FBA885D` = 145 / 99.5), indo aos poucos
   (`0.05` por passo), entre 50 e 250. Mario ~145, Luigi ~153, Peach/Rosalina ~175, Toad ~84,
   Mario pequeno ~76. Última palavra `0` = sempre 145 (o original).
+  A altura usada é a maior altura de pescoço vista para aquele esqueleto, baixando só devagar
+  (`mtEyeFit+36` por passo), para poses curvadas (roupa de gato, correndo) não jogarem a câmera
+  para dentro dos ombros; trocar de roupa ou personagem recomeça. Com "corpo acompanha a
+  câmera", é o pescoço (osso Head) que fica embaixo dos olhos, não a raiz do corpo.
+  A altura é medida sem a escala do modelo e multiplicada por ela no fim: com o Megacogumelo (Mario
+  gigante) a visão sobe junto na hora e volta quando ele encolhe (limite 50 a 3000).
 
 O GamePad continua funcionando ao mesmo tempo, botão por botão. Não é preciso mapear
 nada no Cemu para os controles - mas o controle emulado 1 precisa ser um
