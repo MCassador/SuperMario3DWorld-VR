@@ -40,13 +40,15 @@ números e interruptores exatos, em [INSTALL.md](INSTALL.md); resumo:
   de parede do próprio jogo, e voa na direção para onde o controle direito aponta (só no plano
   do chão por padrão, para não jogar no chão com a mão baixa). Só funciona na primeira pessoa
   original, com o controle direito rastreado.
-- **Arremessar com a mão:** o que o Mario pega encostando (casco de Koopa, bola de beisebol, bola
-  de neve, bomba, inimigos) fica na mão que encostou, pendurado abaixo e ao lado dela para não
-  tapar a visão, e só o gesto dessa mão o arremessa, reto para onde você olha. Distância e altura
-  ajustáveis no menu.
+- **Pegar e arremessar com a mão:** segurando o grip e encostando num casco de Koopa (bola de
+  beisebol, bola de neve, bomba, inimigos), o Mario pega; ele fica na mão do grip, pendurado abaixo
+  e ao lado dela para não tapar a visão. Com os dois grips fica entre as mãos; pegando com o outro
+  grip e soltando o primeiro, passa de uma mão para a outra. Soltar os grips (ou o gesto da mão)
+  arremessa, reto para onde você olha. Vale para todas as formas (pequeno, grande, gato...);
+  distância e altura ajustáveis no menu.
 - **Mãos que fecham:** segurando o grip a luva fecha o punho; só o gatilho, a mão fica meio fechada;
   sem nada, a luva faz a pose do próprio jogo.
-- **Ajuda na primeira pessoa:** encostar num casco pega (não chuta), a sombra fica maior e mais
+- **Ajuda na primeira pessoa:** encostar num casco não chuta mais, a sombra fica maior e mais
   escura e, ao cair, o Mario é guiado de leve para o inimigo embaixo dele, para acertar o pisão
   (também na câmera 200; sem segundo pulo sozinho; vibra quando age; opcional no menu).
 - **Bumerangue e mergulho do gato pela mão:** o bumerangue sai da luva direita e voa para onde o
@@ -66,7 +68,12 @@ números e interruptores exatos, em [INSTALL.md](INSTALL.md); resumo:
   luvas do VR e, na Peach e na Rosalina, a saia. O corpo acompanha a câmera quando você a
   afasta, e a altura dos olhos segue o tamanho de cada personagem (Toad baixo, Peach alta).
 - **Andar para onde olha:** em primeira pessoa, empurrar o analógico para frente anda para onde a
-  cabeça olha (ou, no menu, para onde o controle direito aponta, ou do jeito do jogo).
+  cabeça olha, 1:1 (o "imã" do jogo que endireita o analógico fica desligado na primeira pessoa);
+  no menu dá para trocar para onde o controle direito aponta (com sensibilidade ajustável) ou
+  para o jeito do jogo.
+- **Horizonte nivelado (decoupled pitch):** na escolha de fases, nas fases vistas de cima e nas
+  cenas, a câmera do jogo fica nivelada (mesmo lugar e direção, sem inclinar para baixo); você
+  olha para baixo com a cabeça. Opcional no menu.
 - **Ajuste das luvas:** no menu, esferas de arame desenhadas nos controles reais mostram onde eles
   estão; inclinação, giro e distância das luvas ajustam para a luva ficar em cima do controle.
 - **Vibração:** quando o jogo faria o GamePad vibrar (dano, pulo, pisão, bloco), os dois controles

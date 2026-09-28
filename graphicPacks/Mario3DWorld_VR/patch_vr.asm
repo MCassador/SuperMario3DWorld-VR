@@ -2107,6 +2107,87 @@ add r11, r11, r7
 stw r8, 60(r11)
 b mtCameraStamp
 mtDioramaMath:
+; Level horizon (mtLevel+0 = 1): the game's camera (r3: its 3x4 view at 0..44, position at 52) is
+; replaced by a level copy - same place, same heading, no pitch or roll - so the world stands
+; upright and you look down with your own head. A camera looking (almost) straight down keeps its
+; own matrix.
+lis r7, mtLevel@ha
+addi r7, r7, mtLevel@l
+lwz r0, 0(r7)
+cmpwi r0, 0
+beq mtLevelSkip
+lfs f7, 32(r3)
+lfs f8, 40(r3)
+fmuls f9, f7, f7
+fmuls f10, f8, f8
+fadds f9, f9, f10
+lfs f10, 8(r7)
+.int 0xFC095000 ; fcmpu cr0, f9, f10
+blt mtLevelSkip
+.int 0xFD404834 ; frsqrte f10, f9
+lfs f12, 12(r7)
+fmuls f11, f10, f10
+fmuls f11, f11, f9
+fmuls f11, f11, f12
+lfs f12, 16(r7)
+fsubs f11, f12, f11
+fmuls f10, f10, f11
+lfs f12, 12(r7)
+fmuls f11, f10, f10
+fmuls f11, f11, f9
+fmuls f11, f11, f12
+lfs f12, 16(r7)
+fsubs f11, f12, f11
+fmuls f10, f10, f11
+fmuls f7, f7, f10
+fmuls f8, f8, f10
+addi r11, r7, 32
+; position, target (52..72) as they are
+lwz r0, 52(r3)
+stw r0, 52(r11)
+lwz r0, 56(r3)
+stw r0, 56(r11)
+lwz r0, 60(r3)
+stw r0, 60(r11)
+lwz r0, 64(r3)
+stw r0, 64(r11)
+lwz r0, 68(r3)
+stw r0, 68(r11)
+lwz r0, 72(r3)
+stw r0, 72(r11)
+; rows: right = (bz, 0, -bx), up = (0, 1, 0), back = (bx, 0, bz); translation = -rows . position
+lfs f12, 20(r7)
+stfs f8, 0(r11)
+stfs f12, 4(r11)
+fneg f9, f7
+stfs f9, 8(r11)
+stfs f12, 16(r11)
+lfs f9, 24(r7)
+stfs f9, 20(r11)
+stfs f12, 24(r11)
+stfs f7, 32(r11)
+stfs f12, 36(r11)
+stfs f8, 40(r11)
+lfs f10, 52(r3)
+lfs f11, 56(r3)
+lfs f12, 60(r3)
+fmuls f9, f8, f10
+fmuls f0, f7, f12
+fsubs f9, f9, f0
+fneg f9, f9
+stfs f9, 12(r11)
+fneg f9, f11
+stfs f9, 28(r11)
+fmuls f9, f7, f10
+fmuls f0, f8, f12
+fadds f9, f9, f0
+fneg f9, f9
+stfs f9, 44(r11)
+lwz r8, 4(r7)
+addi r8, r8, 1
+stw r8, 4(r7)
+mr r3, r11
+mtLevelSkip:
 lis r8, rrCameraMinusOne@ha
 addi r8, r8, rrCameraMinusOne@l
 lfs f4, 0(r8)
@@ -10388,16 +10469,88 @@ bne mtCarryDone
 lis r10, mtPad@ha
 addi r10, r10, mtPad@l
 mtCarryGlove:
-; a touch pickup is held in the hand that touched it (mtGrab+20)
+; a touch pickup is held by the hands holding their grips: one hand -> that hand (the object moves
+; over when you take it with the other grip and let go of the first), both -> between the hands,
+; none -> the hand that had it last (mtGrab+20)
 lis r8, mtGrab@ha
 lwz r0, mtGrab@l(r8)
 cmpwi r0, 0
 beq mtCarryByGrip
+li r6, 0
+lwz r0, 16(r10)
+cmpwi r0, 1
+bne mtCarryGripL
+lwz r0, 68(r10)
+andi. r0, r0, 32
+beq mtCarryGripL
+lwz r8, 4(r11)
+lis r0, 0x1000
+cmplw r8, r0
+blt mtCarryGripL
+ori r6, r6, 1
+mtCarryGripL:
+lwz r0, 88(r10)
+cmpwi r0, 1
+bne mtCarryGripR
+lwz r0, 140(r10)
+andi. r0, r0, 32
+beq mtCarryGripR
+ori r6, r6, 2
+mtCarryGripR:
 lis r8, mtGrabHand@ha
+cmpwi r6, 3
+beq mtCarryBoth
+cmpwi r6, 1
+bne mtCarryNotL
+li r0, 0
+stw r0, mtGrabHand@l(r8)
+b mtCarryLeft
+mtCarryNotL:
+cmpwi r6, 2
+bne mtCarryLast
+li r0, 1
+stw r0, mtGrabHand@l(r8)
+b mtCarryRight
+mtCarryLast:
 lwz r0, mtGrabHand@l(r8)
 cmpwi r0, 0
 bne mtCarryRight
 b mtCarryLeft
+mtCarryBoth:
+; between the two wrists, a little ahead along the head's facing and below (mtThrow+84, +80)
+bl mtHeadFwd
+bl mtCarrySize
+lwz r8, 4(r11)
+addi r8, r8, 0xB4
+lfs f3, 60(r12)
+lfs f4, 84(r12)
+fmuls f4, f4, f9
+lfs f1, 12(r8)
+lfs f2, 60(r9)
+fadds f1, f1, f2
+fmuls f1, f1, f3
+fmuls f2, f5, f4
+fadds f1, f1, f2
+stfs f1, 0(r30)
+lfs f1, 28(r8)
+lfs f2, 76(r9)
+fadds f1, f1, f2
+fmuls f1, f1, f3
+lfs f2, 80(r12)
+fmuls f2, f2, f9
+fsubs f1, f1, f2
+stfs f1, 4(r30)
+lfs f1, 44(r8)
+lfs f2, 92(r9)
+fadds f1, f1, f2
+fmuls f1, f1, f3
+fmuls f2, f6, f4
+fadds f1, f1, f2
+stfs f1, 8(r30)
+lwz r8, 40(r12)
+addi r8, r8, 1
+stw r8, 40(r12)
+b mtCarryDone
 mtCarryByGrip:
 ; otherwise the left glove when only its grip is held (and it is tracked), else the right one
 lwz r0, 16(r10)
@@ -10435,12 +10588,15 @@ lwz r0, 48(r12)
 cmpwi r0, 0
 beq mtCarryFingers
 bl mtHeadFwd
+bl mtCarrySize
 lfs f4, 64(r12)
+fmuls f4, f4, f9
 cmpwi r5, 0
 beq mtCarrySideR
 fneg f4, f4
 mtCarrySideR:
 lfs f3, 52(r12)
+fmuls f3, f3, f9
 fmuls f7, f5, f3
 fmuls f8, f6, f3
 ; the head's right on the ground plane is (-fz, fx)
@@ -10453,6 +10609,7 @@ fadds f1, f1, f7
 stfs f1, 0(r30)
 lfs f1, 28(r9)
 lfs f3, 56(r12)
+fmuls f3, f3, f9
 fsubs f1, f1, f3
 stfs f1, 4(r30)
 lfs f1, 44(r9)
@@ -10491,6 +10648,26 @@ mtlr r7
 lwz r0, 0x54(r1)
 blr
 0x022FFA58 = bla mtCarryPos
+
+; mtCarrySize: f9 = the character's size for the carried object's offsets = its eye height
+; (mrEyeTarget+12) / 145, kept within mtThrow+72 .. +76. Uses r8, f3 and f9 only.
+mtCarrySize:
+lis r8, mrEyeTarget@ha
+addi r8, r8, mrEyeTarget@l
+lfs f9, 12(r8)
+lfs f3, 68(r12)
+fmuls f9, f9, f3
+lfs f3, 72(r12)
+.int 0xFC091800 ; fcmpu cr0, f9, f3
+bge mtCarrySizeLo
+fmr f9, f3
+mtCarrySizeLo:
+lfs f3, 76(r12)
+.int 0xFC091800 ; fcmpu cr0, f9, f3
+ble mtCarrySizeHi
+fmr f9, f3
+mtCarrySizeHi:
+blr
 
 ; mtHeadFwd: (f5, f6) = where the head faces on the ground plane (x, z, length 1), from the two
 ; eyes (right eye - left eye turned a quarter to the front); the tracking space's forward when an
@@ -10950,6 +11127,34 @@ stw r11, 0(r12)
 mtRumbleDone:
 blr
 0x02496C00 = bla mtRumble
+
+; Stick snapping. The player's stick filter (0x022B2558, r4 -> the stick x/y) pulls a stick held
+; nearly straight onto the straight line (0x022B1E20 widens that for X, 0x022B212C the general
+; snap) unless Mario stands in a 'StickSnapOffArea'. In first person that snap is a dead zone:
+; walking where the head looks or the controller points must follow small turns 1:1. So while the
+; first-person camera is in use (mtControl+28) and mtStickSnap+0 is 1, the filter returns at once,
+; as in a StickSnapOffArea. Its first step (0x022B2570, lwz r3,0x68(r31)) comes here.
+0x022B2574 = mtStickSnapRet:
+0x022B2700 = mtStickSnapOff:
+mtStickSnap:
+lis r12, mtStickSnapData@ha
+addi r12, r12, mtStickSnapData@l
+lwz r11, 0(r12)
+cmpwi r11, 0
+beq mtStickSnapKeep
+lis r11, mtControl@ha
+addi r11, r11, mtControl@l
+lwz r11, 28(r11)
+cmpwi r11, 1
+bne mtStickSnapKeep
+lwz r11, 4(r12)
+addi r11, r11, 1
+stw r11, 4(r12)
+b mtStickSnapOff
+mtStickSnapKeep:
+lwz r3, 0x68(r31)
+b mtStickSnapRet
+0x022B2570 = ba mtStickSnap
 
 ; Aiming powers with the right controller, like the fireball.
 ; mtVrGroundDir: in the original first person with the right controller tracked, (f0, f2) = where it
@@ -11442,10 +11647,45 @@ li r0, 0
 stw r0, 4(r12)
 cmpwi r3, 0
 bne mtGrabTouchReal
+; r6 = the grips held on tracked controllers (1 left, 2 right)
+lis r10, mtPad@ha
+addi r10, r10, mtPad@l
+li r6, 0
+lwz r0, 16(r10)
+cmpwi r0, 1
+bne mtGripTL
+lwz r0, 68(r10)
+andi. r0, r0, 32
+beq mtGripTL
+ori r6, r6, 1
+mtGripTL:
+lwz r0, 88(r10)
+cmpwi r0, 1
+bne mtGripTR
+lwz r0, 140(r10)
+andi. r0, r0, 32
+beq mtGripTR
+ori r6, r6, 2
+mtGripTR:
+; mtGrab+28 = 1: only a hand holding its grip picks up (touching alone neither picks up nor kicks)
+lwz r0, 28(r12)
+cmpwi r0, 0
+beq mtGrabGripFree
+cmpwi r6, 0
+bne mtGrabGripFree
+li r3, 0
+blr
+mtGrabGripFree:
 stw r30, 0(r12)
 lwz r0, 4(r30)
 stw r0, 24(r12)
-; the hand that touched it (mtGrab+20: 1 right, 0 left): the tracked glove whose wrist is nearer
+; the hand holding it (mtGrab+20: 1 right, 0 left): the one gripping; both or none: the nearer glove
+li r9, 0
+cmpwi r6, 1
+beq mtGrabHandSet
+li r9, 1
+cmpwi r6, 2
+beq mtGrabHandSet
 li r9, 1
 lis r10, mtPad@ha
 addi r10, r10, mtPad@l
@@ -11536,6 +11776,17 @@ mtGrabHoldUp:
 lwz r0, 4(r12)
 cmpwi r0, 0
 bne mtGrabHoldThrow
+lwz r0, 28(r12)
+cmpwi r0, 0
+beq mtGrabHoldKeep
+lis r10, mtPad@ha
+addi r10, r10, mtPad@l
+lwz r0, 68(r10)
+lwz r11, 140(r10)
+or r0, r0, r11
+andi. r0, r0, 32
+beq mtGrabHoldThrow
+mtGrabHoldKeep:
 li r3, 1
 blr
 mtGrabHoldThrow:
@@ -11714,7 +11965,7 @@ mtHideMask:
 mtMenuTable:
 .int 0x4D56524D
 .int 1
-.int 14
+.int 15
 .int mtFpBody
 .int mtEyeFit
 .int mrSnapSin
@@ -11729,6 +11980,7 @@ mtMenuTable:
 .int mtGlovePoses
 .int mtStomp
 .int mtThrow
+.int mtLevel
 ; Player body in the original first person (camera distance 0): each bit draws one shape of the
 ; player's own body model (bit 0 = first shape; Mario has 5, Peach 6), so looking down shows the
 ; body; 0 = hidden as in the original. The eyes, face and other parts stay hidden, the gloves
@@ -11849,6 +12101,11 @@ mtThrow:
 .int 0x420C0000 ; +56 how far below the wrist (float, 35 units; menu: 51 .. 19)
 .int 0x3F000000 ; +60 0.5
 .int 0x41F00000 ; +64 how far outward from the hand (float, 30 units)
+.int 0x3BE1FC78 ; +68 1/145 (the offsets are for Mario's eye height, 145)
+.int 0x3ECCCCCD ; +72 0.4, the smallest size factor
+.int 0x3FCCCCCD ; +76 1.6, the largest
+.int 0x41200000 ; +80 held with both hands: below the hands (float, 10 units)
+.int 0x41700000 ; +84 held with both hands: ahead of the hands (float, 15 units)
 ; mtFx: 0 switch (1 = the player's effects go with the body drawn under the view, 0 = where the
 ; game has them), 4 footprints too (1 / 0); counters: 8 emitters moved at creation, 12 follow
 ; updates moved, 16 footprints moved.
@@ -11902,6 +12159,7 @@ mtGrab:
 mtGrabHand:
 .int 1
 .int 0
+.int 1 ; +28 1 = picking up needs a grip held, and letting go of all grips throws; 0 = touch alone
 ; mtStomp: stomp assist in first person: 0 switch (1 / 0), 4 reach (horizontal distance squared,
 ; 14400 = 120 units), 8 how much of the horizontal distance to the enemy is added to the velocity
 ; per frame while falling (float, 0.2 of the way to the landing speed), 12 frames it pulled (counter).
@@ -11931,6 +12189,45 @@ mtStomp:
 .int 0
 .int 1
 .int 0x41000000 ; +72 the fewest frames to landing the speed is worked out for (8.0: caps the speed)
+; mtStickSnapData: 0 switch (1 = no stick snapping while the first-person camera is in use),
+; 4 filter calls skipped (counter).
+mtStickSnapData:
+.int 1
+.int 0
+; mtLevel: 0 switch (1 = map, title and cutscene cameras kept level: decoupled pitch), 4 counter,
+; 8 the smallest horizontal part (squared) of the view direction that is levelled, 12 0.5, 16 1.5,
+; 20 0.0, 24 1.0, 28 spare, 32.. the level camera (22 words)
+mtLevel:
+.int 1
+.int 0
+.int 0x3B23D70A
+.int 0x3F000000
+.int 0x3FC00000
+.int 0x00000000
+.int 0x3F800000
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
 mtRumbleData:
 .int 0
 .int 0
