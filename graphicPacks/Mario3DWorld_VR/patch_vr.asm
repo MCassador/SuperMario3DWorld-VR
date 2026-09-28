@@ -2995,13 +2995,14 @@ lis r12, 65535
 ori r12, r12, 57343
 and r6, r6, r12
 mtMotionRightDoneBit1:
+; the right trigger runs: held, it holds the game's X (run / pick up / fireball)
 li r12, 16
 and r12, r11, r12
 cmpwi r12, 0
 beq mtMotionRightDoneBit2
-ori r5, r5, 16384
+ori r5, r5, 8192
 lis r12, 65535
-ori r12, r12, 49151
+ori r12, r12, 57343
 and r6, r6, r12
 mtMotionRightDoneBit2:
 li r12, 32
@@ -6920,7 +6921,14 @@ lfs f2, 0(r9)
 fmuls f1, f1, f2
 fmuls f1, f1, f8
 mtEyeFitAdd:
+; two height profiles: a small character (eye height below mtEyeFit+60: small Mario...) gets the
+; adjustment at +64, a big one the one at +20
 lfs f2, 20(r9)
+lfs f3, 60(r9)
+.int 0xFC011800 ; fcmpu cr0, f1, f3
+bge mtEyeFitBig
+lfs f2, 64(r9)
+mtEyeFitBig:
 fadds f1, f1, f2
 lfs f2, 8(r9)
 .int 0xFC011000 ; fcmpu cr0, f1, f2
@@ -10536,6 +10544,9 @@ lwz r0, mtGrab@l(r8)
 cmpwi r0, 0
 beq mtCarryByGrip
 bl mtCarryShrink
+bl mtCarryFace
+lis r10, mtPad@ha
+addi r10, r10, mtPad@l
 li r6, 0
 lwz r0, 16(r10)
 cmpwi r0, 1
@@ -10610,6 +10621,7 @@ stfs f1, 8(r30)
 lwz r8, 40(r12)
 addi r8, r8, 1
 stw r8, 40(r12)
+stw r30, 92(r12)
 b mtCarryDone
 mtCarryByGrip:
 ; otherwise the left glove when only its grip is held (and it is tracked), else the right one
@@ -10678,6 +10690,7 @@ stfs f1, 8(r30)
 lwz r8, 40(r12)
 addi r8, r8, 1
 stw r8, 40(r12)
+stw r30, 92(r12)
 b mtCarryDone
 mtCarryFingers:
 ; r9 = the glove's 3x4 world matrix: its Z column (the fingers, carrying the glove size) at 8/24/40,
@@ -10703,6 +10716,7 @@ stfs f1, 8(r30)
 lwz r8, 40(r12)
 addi r8, r8, 1
 stw r8, 40(r12)
+stw r30, 92(r12)
 mtCarryDone:
 mtlr r7
 lwz r0, 0x54(r1)
@@ -10710,9 +10724,9 @@ blr
 0x022FFA58 = bla mtCarryPos
 
 ; mtCarryShrink: the object picked up by grip is drawn smaller while held: its pose's scale
-; (found once as a (1, 1, 1) triple at +0x18 or +0x1C of the pose [[owner+0xC0]], kept in
+; (found once as the first (1, 1, 1) triple in its pose keeper [owner+0xC0], kept in
 ; mtGrab+32) is set to mtGrab+36 every frame; mtGrabHold puts 1 back when it is let go.
-; Uses r0, r6, r8 and f1..f4 only.
+; Uses r0, r5, r6, r8, r10 and f1..f4 only.
 mtCarryShrink:
 lis r8, mtGrab@ha
 addi r8, r8, mtGrab@l
@@ -10750,35 +10764,62 @@ cmplw r6, r0
 bge mtShrinkDone
 andi. r0, r6, 3
 bne mtShrinkDone
-lwz r6, 0(r6)
+; r6 = the object's pose keeper [owner+0xC0] (a vtable, then its vectors): its scale is the first
+; (1, 1, 1) triple in +4 .. +0x4C
+mr r10, r6
+addi r0, r6, 0x48
+addi r6, r6, 4
+mtShrinkScan:
+lfs f1, 0(r6)
+lfs f2, 4(r6)
+lfs f3, 8(r6)
+.int 0xFC012000 ; fcmpu cr0, f1, f4
+bne mtShrinkNext
+.int 0xFC022000 ; fcmpu cr0, f2, f4
+bne mtShrinkNext
+.int 0xFC032000 ; fcmpu cr0, f3, f4
+beq mtShrinkFound
+mtShrinkNext:
+addi r6, r6, 4
+cmplw r6, r0
+blt mtShrinkScan
+; not in the keeper itself: behind one of its pointers (+4 .. +0x48), the first (1, 1, 1) triple
+; in +0 .. +0x20 of what it points at
+addi r5, r10, 4
+mtShrinkPtrLoop:
+lwz r6, 0(r5)
 lis r0, 0x1000
 cmplw r6, r0
-blt mtShrinkDone
+blt mtShrinkPtrNext
 lis r0, 0x5000
 cmplw r6, r0
-bge mtShrinkDone
+bge mtShrinkPtrNext
 andi. r0, r6, 3
-bne mtShrinkDone
-lfs f1, 0x18(r6)
-lfs f2, 0x1C(r6)
-lfs f3, 0x20(r6)
+bne mtShrinkPtrNext
+addi r8, r6, 0x24
+mtShrinkPtrScan:
+lfs f1, 0(r6)
+lfs f2, 4(r6)
+lfs f3, 8(r6)
 .int 0xFC012000 ; fcmpu cr0, f1, f4
-bne mtShrinkTry1C
+bne mtShrinkPtrStep
 .int 0xFC022000 ; fcmpu cr0, f2, f4
-bne mtShrinkTry1C
+bne mtShrinkPtrStep
 .int 0xFC032000 ; fcmpu cr0, f3, f4
-bne mtShrinkTry1C
-addi r6, r6, 0x18
-b mtShrinkFound
-mtShrinkTry1C:
-lfs f1, 0x24(r6)
-.int 0xFC022000 ; fcmpu cr0, f2, f4
-bne mtShrinkDone
-.int 0xFC032000 ; fcmpu cr0, f3, f4
-bne mtShrinkDone
-.int 0xFC012000 ; fcmpu cr0, f1, f4
-bne mtShrinkDone
-addi r6, r6, 0x1C
+beq mtShrinkFoundP
+mtShrinkPtrStep:
+addi r6, r6, 4
+cmplw r6, r8
+blt mtShrinkPtrScan
+mtShrinkPtrNext:
+addi r5, r5, 4
+addi r0, r10, 0x4C
+cmplw r5, r0
+blt mtShrinkPtrLoop
+b mtShrinkDone
+mtShrinkFoundP:
+lis r8, mtGrab@ha
+addi r8, r8, mtGrab@l
 mtShrinkFound:
 stw r6, 32(r8)
 mtShrinkWrite:
@@ -10787,6 +10828,64 @@ stfs f1, 0(r6)
 stfs f1, 4(r6)
 stfs f1, 8(r6)
 mtShrinkDone:
+blr
+
+; mtCarryFace: while something is held by grip and Mario stands (left stick below mtThrow+100,
+; squared), Mario really faces where the head looks (mtHeadFwd): the game turns and places what he
+; carries by his facing, so the held object turns with the head and with the right-stick turning.
+; Walking leaves the facing to the game (it steers by it). Uses r0, r6, r8, r10 and f1..f8.
+mtCarryFace:
+lis r8, mtThrow@ha
+addi r8, r8, mtThrow@l
+lwz r0, 96(r8)
+cmpwi r0, 0
+beq mtCarryFaceDone
+lis r10, mtPad@ha
+addi r10, r10, mtPad@l
+lfs f1, 80(r10)
+lfs f2, 84(r10)
+fmuls f1, f1, f1
+fmuls f2, f2, f2
+fadds f1, f1, f2
+lfs f2, 100(r8)
+.int 0xFC011000 ; fcmpu cr0, f1, f2
+bge mtCarryFaceDone
+mflr r6
+bl mtHeadFwd
+mtlr r6
+lis r8, mtHideActor@ha
+lwz r8, mtHideActor@l(r8)
+lis r0, 0x1000
+cmplw r8, r0
+blt mtCarryFaceDone
+lis r0, 0x5000
+cmplw r8, r0
+bge mtCarryFaceDone
+andi. r0, r8, 3
+bne mtCarryFaceDone
+lwz r8, 0xC0(r8)
+lis r0, 0x1000
+cmplw r8, r0
+blt mtCarryFaceDone
+lis r0, 0x5000
+cmplw r8, r0
+bge mtCarryFaceDone
+andi. r0, r8, 3
+bne mtCarryFaceDone
+lwz r8, 0(r8)
+lis r0, 0x1000
+cmplw r8, r0
+blt mtCarryFaceDone
+lis r0, 0x5000
+cmplw r8, r0
+bge mtCarryFaceDone
+andi. r0, r8, 3
+bne mtCarryFaceDone
+stfs f5, 12(r8)
+li r0, 0
+stw r0, 16(r8)
+stfs f6, 20(r8)
+mtCarryFaceDone:
 blr
 
 ; mtCarrySize: f9 = the character's size for the carried object's offsets = its eye height
@@ -11980,6 +12079,20 @@ addi r11, r11, mtControl@l
 lwz r0, 28(r11)
 cmpwi r0, 1
 bne mtKickGateSend
+; picking up by grip (mtGrab+28): the touch is held back only while a grip is held (you are
+; grabbing). This message is how everything touched learns it - a checkpoint flag too - so with
+; no grip held it goes out as in the game.
+lwz r0, 28(r12)
+cmpwi r0, 0
+beq mtKickGateHold
+lis r11, mtPad@ha
+addi r11, r11, mtPad@l
+lwz r0, 68(r11)
+lwz r12, 140(r11)
+or r0, r0, r12
+andi. r0, r0, 32
+beq mtKickGateSend
+mtKickGateHold:
 li r3, 0
 blr
 mtKickGateSend:
@@ -12273,6 +12386,9 @@ mtThrow:
 .int 0x41200000 ; +80 held with both hands: below the hands (float, 10 units)
 .int 0x41700000 ; +84 held with both hands: ahead of the hands (float, 15 units)
 .int 0x42C80000 ; +88 throw toward the hand: the hand at least 10 units from the head (squared, 100)
+.int 0 ; +92 where the carried object's place was last written (diagnostics)
+.int 1 ; +96 1 = while holding something by grip and standing, Mario faces where the head looks
+.int 0x3D23D70A ; +100 standing = the left stick below 0.2 (squared, 0.04)
 ; mtFx: 0 switch (1 = the player's effects go with the body drawn under the view, 0 = where the
 ; game has them), 4 footprints too (1 / 0); counters: 8 emitters moved at creation, 12 follow
 ; updates moved, 16 footprints moved.
@@ -12578,7 +12694,7 @@ mtEyeFit:
 .int 0x42480000
 .int 0x453B8000
 .int 1
-.int 0x00000000 ; +20 fine adjustment, game units (float; the menu sets it)
+.int 0xC1F00000 ; +20 fine adjustment for a big character, game units (float, -30; the menu sets it)
 .int 0x43110000 ; +24 the height when off (145)
 .int 0 ; +28 highest neck height seen (runtime)
 .int 0 ; +32 its skeleton (runtime)
@@ -12588,6 +12704,8 @@ mtEyeFit:
 .int 0x358637BD ; +48 1e-6
 .int 0x3FC00000 ; +52 1.5
 .int 0x3F800000 ; +56 the body model's scale last measured (runtime; the gloves grow with it)
+.int 0x42DC0000 ; +60 below this eye height the character counts as small (float, 110)
+.int 0x40A00000 ; +64 fine adjustment for a small character (float, +5)
 mtArmTmp:
 .int 0
 .int 0

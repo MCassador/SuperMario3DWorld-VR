@@ -68,10 +68,12 @@ pela `cemuvr_layer.dll` e acha os ajustes do patch pela tabela `mtMenuTable` (ma
 
 - mão esquerda: X corre, Y arremessa, o gatilho é ZL, o grip é L (e fecha a luva), o botão de
   menu é Plus, o clique do analógico é Minus
-- mão direita: A pula, B corre, o gatilho é B, o grip é R (e fecha a luva)
-- na primeira pessoa, **encostar** num casco, bola, bloco etc. já pega (sem botão) e nunca chuta
-  (`mtGrab`: ganchos `0x02289430`, `0x022916D8`, `0x0228A818`); para arremessar, aperte e solte o
-  botão de correr ou faça o gesto de jogar a mão
+- mão direita: A pula, B corre, **segurar o gatilho corre** (é o X do jogo), o grip é R (e fecha
+  a luva)
+- na primeira pessoa, **segurando o grip e encostando** num casco, bola, bloco etc. o Mario pega
+  (sem chutar) e ele fica na mão do grip; soltar o grip arremessa (`mtGrab`: ganchos `0x02289430`,
+  `0x022916D8`, `0x0228A818`). Sem grip, encostar funciona como no jogo (chuta o casco, ativa a
+  bandeira de checkpoint)
 - analógico esquerdo move, analógico direito olha
 - segure o controle esquerdo perto da sua cabeça: enquanto ele estiver lá, o
   analógico direito age como a cruzeta (D-pad) e para de girar a visão, e um
