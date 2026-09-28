@@ -40,13 +40,15 @@ números e interruptores exatos, em [INSTALL.md](INSTALL.md); resumo:
   de parede do próprio jogo, e voa na direção para onde o controle direito aponta (só no plano
   do chão por padrão, para não jogar no chão com a mão baixa). Só funciona na primeira pessoa
   original, com o controle direito rastreado.
-- **Arremessar com a mão:** o que o Mario carrega (casco de Koopa, bola de beisebol, bola de neve,
-  bomba, inimigos) fica na palma da luva direita e, ao soltar, voa para onde o controle direito
-  aponta (no plano do chão), como a bola de fogo.
+- **Arremessar com a mão:** o que o Mario pega encostando (casco de Koopa, bola de beisebol, bola
+  de neve, bomba, inimigos) fica na mão que encostou, pendurado abaixo e ao lado dela para não
+  tapar a visão, e só o gesto dessa mão o arremessa, reto para onde você olha. Distância e altura
+  ajustáveis no menu.
 - **Mãos que fecham:** segurando o grip a luva fecha o punho; só o gatilho, a mão fica meio fechada;
   sem nada, a luva faz a pose do próprio jogo.
 - **Ajuda na primeira pessoa:** encostar num casco pega (não chuta), a sombra fica maior e mais
-  escura e, ao cair, o Mario é puxado de leve para o inimigo embaixo dele, para acertar o pisão.
+  escura e, ao cair, o Mario é guiado de leve para o inimigo embaixo dele, para acertar o pisão
+  (também na câmera 200; sem segundo pulo sozinho; vibra quando age; opcional no menu).
 - **Bumerangue e mergulho do gato pela mão:** o bumerangue sai da luva direita e voa para onde o
   controle direito aponta; o mergulho do gato vai na direção do controle direito.
 - **Gesto de ataque ("arremesso de pesca"):** puxar qualquer uma das mãos para perto da cabeça e
@@ -63,11 +65,15 @@ números e interruptores exatos, em [INSTALL.md](INSTALL.md); resumo:
   cabeça), virado para onde você girou com o analógico, com os braços indo do ombro até as
   luvas do VR e, na Peach e na Rosalina, a saia. O corpo acompanha a câmera quando você a
   afasta, e a altura dos olhos segue o tamanho de cada personagem (Toad baixo, Peach alta).
+- **Andar para onde olha:** em primeira pessoa, empurrar o analógico para frente anda para onde a
+  cabeça olha (ou, no menu, para onde o controle direito aponta, ou do jeito do jogo).
+- **Ajuste das luvas:** no menu, esferas de arame desenhadas nos controles reais mostram onde eles
+  estão; inclinação, giro e distância das luvas ajustam para a luva ficar em cima do controle.
 - **Vibração:** quando o jogo faria o GamePad vibrar (dano, pulo, pisão, bloco), os dois controles
   do Quest vibram, com força ajustável no menu.
-- **Conforto:** vinheta ao andar, HUD no pulso esquerdo (levante a mão e olhe para ela), agachar
-  de verdade (abaixar o corpo faz o Mario agachar) e cenas do jogo numa tela fixa - tudo opcional
-  no menu.
+- **Conforto:** vinheta ao andar, agachar de verdade (abaixar o corpo faz o Mario agachar), cenas
+  do jogo numa tela fixa e mira no pulo em primeira pessoa (puxa de leve para cima do inimigo e
+  vibra quando age) - tudo opcional no menu.
 - **Menu de opções no óculos (B + Y):** apertando B e Y juntos abre um menu na sua frente para
   ligar/desligar e ajustar o corpo, os braços, o giro, as distâncias de câmera e o
   tamanho das luvas, sem editar arquivos; fica salvo para as próximas vezes.

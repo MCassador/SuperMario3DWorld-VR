@@ -3149,6 +3149,16 @@ beq mtSwingDone
 lwz r12, 20(r11)
 cmpwi r12, 0
 bne mtSwingDone
+; holding something picked up by touch: only the hand holding it throws it
+lis r12, mtGrab@ha
+lwz r12, mtGrab@l(r12)
+cmpwi r12, 0
+beq mtSwingFree
+lis r12, mtGrabHand@ha
+lwz r12, mtGrabHand@l(r12)
+cmpwi r12, 1
+bne mtSwingDone
+mtSwingFree:
 lwz r12, 8(r11)
 stw r12, 16(r11)
 lwz r12, 12(r11)
@@ -3284,6 +3294,15 @@ beq mtSwingDoneL
 lwz r12, 20(r11)
 cmpwi r12, 0
 bne mtSwingDoneL
+lis r12, mtGrab@ha
+lwz r12, mtGrab@l(r12)
+cmpwi r12, 0
+beq mtSwingFreeL
+lis r12, mtGrabHand@ha
+lwz r12, mtGrabHand@l(r12)
+cmpwi r12, 0
+bne mtSwingDoneL
+mtSwingFreeL:
 lwz r12, 8(r11)
 stw r12, 16(r11)
 lwz r12, 12(r11)
@@ -10369,7 +10388,18 @@ bne mtCarryDone
 lis r10, mtPad@ha
 addi r10, r10, mtPad@l
 mtCarryGlove:
-; the left glove when only its grip is held (and it is tracked), else the right one
+; a touch pickup is held in the hand that touched it (mtGrab+20)
+lis r8, mtGrab@ha
+lwz r0, mtGrab@l(r8)
+cmpwi r0, 0
+beq mtCarryByGrip
+lis r8, mtGrabHand@ha
+lwz r0, mtGrabHand@l(r8)
+cmpwi r0, 0
+bne mtCarryRight
+b mtCarryLeft
+mtCarryByGrip:
+; otherwise the left glove when only its grip is held (and it is tracked), else the right one
 lwz r0, 16(r10)
 cmpwi r0, 1
 bne mtCarryRight
@@ -10379,37 +10409,54 @@ beq mtCarryRight
 lwz r0, 140(r10)
 andi. r0, r0, 32
 bne mtCarryRight
-lwz r9, 4(r11)
+mtCarryLeft:
+lwz r0, 16(r10)
+cmpwi r0, 1
+bne mtCarryRight
+lwz r8, 4(r11)
 lis r0, 0x1000
-cmplw r9, r0
+cmplw r8, r0
 blt mtCarryRight
-addi r9, r9, 0xB4
+addi r9, r8, 0xB4
+li r5, 1
 b mtCarryPlace
 mtCarryRight:
 lwz r0, 88(r10)
 cmpwi r0, 1
 bne mtCarryDone
 addi r9, r9, 48
+li r5, 0
 mtCarryPlace:
 ; mtThrow+48 = 1: the object goes with the hand but sits ahead of it, along where the head faces
-; (mtThrow+52 units ahead of the wrist, mtThrow+56 below), so it moves with the hand and stays out of
-; the face; 0 = along the glove's fingers
+; (mtThrow+52 units ahead of the wrist, mtThrow+56 below, mtThrow+64 outward: to the right of the
+; right hand, to the left of the left one), so it moves with the hand, hangs low and to the side
+; and leaves the view clear (a shell is almost a metre wide at this scale); 0 = along the fingers
 lwz r0, 48(r12)
 cmpwi r0, 0
 beq mtCarryFingers
 bl mtHeadFwd
+lfs f4, 64(r12)
+cmpwi r5, 0
+beq mtCarrySideR
+fneg f4, f4
+mtCarrySideR:
 lfs f3, 52(r12)
-fmuls f5, f5, f3
-fmuls f6, f6, f3
+fmuls f7, f5, f3
+fmuls f8, f6, f3
+; the head's right on the ground plane is (-fz, fx)
+fmuls f1, f6, f4
+fsubs f7, f7, f1
+fmuls f1, f5, f4
+fadds f8, f8, f1
 lfs f1, 12(r9)
-fadds f1, f1, f5
+fadds f1, f1, f7
 stfs f1, 0(r30)
 lfs f1, 28(r9)
 lfs f3, 56(r12)
 fsubs f1, f1, f3
 stfs f1, 4(r30)
 lfs f1, 44(r9)
-fadds f1, f1, f6
+fadds f1, f1, f8
 stfs f1, 8(r30)
 lwz r8, 40(r12)
 addi r8, r8, 1
@@ -11096,10 +11143,15 @@ stw r3, 20(r12)
 lwz r0, 0(r12)
 cmpwi r0, 0
 beq mtStompDone
+; with the camera pulled back (mtEyeBack, the 200 camera) only when mtStomp+68 is 1
 lis r11, mtEyeBack@ha
 lwz r0, mtEyeBack@l(r11)
 cmpwi r0, 0
-bne mtStompDone
+beq mtStompEyeOk
+lwz r0, 68(r12)
+cmpwi r0, 0
+beq mtStompDone
+mtStompEyeOk:
 lis r11, mtControl@ha
 addi r11, r11, mtControl@l
 lwz r0, 28(r11)
@@ -11249,6 +11301,15 @@ bge mtStompLoop
 andi. r0, r6, 3
 bne mtStompLoop
 lwz r0, 4(r6)
+cmplwi r0, 31
+bgt mtStompNoMask
+li r3, 1
+.int 0x7C630030 ; slw r3, r3, r0
+lwz r4, 64(r12)
+or r4, r4, r3
+stw r4, 64(r12)
+mtStompNoMask:
+lwz r0, 4(r6)
 cmpwi r0, 5
 beq mtStompType
 cmpwi r0, 6
@@ -11293,6 +11354,7 @@ fsubs f2, f2, f11
 lfs f3, 16(r12)
 .int 0xFC021800 ; fcmpu cr0, f2, f3
 bge mtStompLoop
+fmr f13, f2
 lfs f2, 8(r6)
 fsubs f2, f2, f10
 lfs f3, 16(r6)
@@ -11305,20 +11367,34 @@ bge mtStompLoop
 fmr f6, f4
 fmr f7, f2
 fmr f8, f3
+fmr f9, f13
 mr r7, r3
 li r5, 1
 b mtStompLoop
 mtStompPick:
 cmpwi r5, 0
 beq mtStompDone
+; the horizontal speed that lands on it: (dx, dz) / the frames until landing (the height to fall /
+; the vertical speed, at least mtStomp+72); the velocity goes mtStomp+8 of the way there per frame,
+; so it homes in without building up speed (no fling)
+.int 0xED490024 ; fdivs f10, f9, f0
+lfs f3, 72(r12)
+.int 0xFC0A1800 ; fcmpu cr0, f10, f3
+bge mtStompFrames
+fmr f10, f3
+mtStompFrames:
+.int 0xECE75024 ; fdivs f7, f7, f10
+.int 0xED085024 ; fdivs f8, f8, f10
 lfs f5, 8(r12)
-fmuls f7, f7, f5
-fmuls f8, f8, f5
 lfs f2, 0x24(r8)
-fadds f2, f2, f7
+fsubs f3, f7, f2
+fmuls f3, f3, f5
+fadds f2, f2, f3
 stfs f2, 0x24(r8)
 lfs f2, 0x2C(r8)
-fadds f2, f2, f8
+fsubs f3, f8, f2
+fmuls f3, f3, f5
+fadds f2, f2, f3
 stfs f2, 0x2C(r8)
 lwz r4, 12(r12)
 addi r4, r4, 1
@@ -11367,6 +11443,61 @@ stw r0, 4(r12)
 cmpwi r3, 0
 bne mtGrabTouchReal
 stw r30, 0(r12)
+lwz r0, 4(r30)
+stw r0, 24(r12)
+; the hand that touched it (mtGrab+20: 1 right, 0 left): the tracked glove whose wrist is nearer
+li r9, 1
+lis r10, mtPad@ha
+addi r10, r10, mtPad@l
+lwz r0, 16(r10)
+cmpwi r0, 1
+bne mtGrabHandSet
+lis r11, mtHandCtl@ha
+addi r11, r11, mtHandCtl@l
+lwz r11, 4(r11)
+lis r0, 0x1000
+cmplw r11, r0
+blt mtGrabHandSet
+addi r11, r11, 0xB4
+lfs f1, 8(r30)
+lfs f2, 12(r11)
+fsubs f1, f1, f2
+fmuls f3, f1, f1
+lfs f1, 12(r30)
+lfs f2, 28(r11)
+fsubs f1, f1, f2
+fmuls f1, f1, f1
+fadds f3, f3, f1
+lfs f1, 16(r30)
+lfs f2, 44(r11)
+fsubs f1, f1, f2
+fmuls f1, f1, f1
+fadds f3, f3, f1
+li r9, 0
+lwz r0, 88(r10)
+cmpwi r0, 1
+bne mtGrabHandSet
+lis r11, mtHandW@ha
+addi r11, r11, mtHandW@l
+lfs f1, 8(r30)
+lfs f2, 60(r11)
+fsubs f1, f1, f2
+fmuls f5, f1, f1
+lfs f1, 12(r30)
+lfs f2, 76(r11)
+fsubs f1, f1, f2
+fmuls f1, f1, f1
+fadds f5, f5, f1
+lfs f1, 16(r30)
+lfs f2, 92(r11)
+fsubs f1, f1, f2
+fmuls f1, f1, f1
+fadds f5, f5, f1
+.int 0xFC032800 ; fcmpu cr0, f3, f5
+blt mtGrabHandSet
+li r9, 1
+mtGrabHandSet:
+stw r9, 20(r12)
 lwz r11, 12(r12)
 addi r11, r11, 1
 stw r11, 12(r12)
@@ -11583,7 +11714,7 @@ mtHideMask:
 mtMenuTable:
 .int 0x4D56524D
 .int 1
-.int 13
+.int 14
 .int mtFpBody
 .int mtEyeFit
 .int mrSnapSin
@@ -11597,6 +11728,7 @@ mtMenuTable:
 .int mtRumbleData
 .int mtGlovePoses
 .int mtStomp
+.int mtThrow
 ; Player body in the original first person (camera distance 0): each bit draws one shape of the
 ; player's own body model (bit 0 = first shape; Mario has 5, Peach 6), so looking down shows the
 ; body; 0 = hidden as in the original. The eyes, face and other parts stay hidden, the gloves
@@ -11713,9 +11845,10 @@ mtThrow:
 .int 0
 .int 1 ; +44 1 = thrown straight where the head faces, 0 = where the right controller points
 .int 1 ; +48 1 = held ahead of the hand (along the head's facing), 0 = along the glove's fingers
-.int 0x42340000 ; +52 how far ahead of the wrist (float, 45 units, about 30 cm)
-.int 0x41200000 ; +56 how far below the wrist (float, 10 units)
+.int 0x41A00000 ; +52 how far ahead of the wrist (float, 20 units; menu: 0 .. 40)
+.int 0x420C0000 ; +56 how far below the wrist (float, 35 units; menu: 51 .. 19)
 .int 0x3F000000 ; +60 0.5
+.int 0x41F00000 ; +64 how far outward from the hand (float, 30 units)
 ; mtFx: 0 switch (1 = the player's effects go with the body drawn under the view, 0 = where the
 ; game has them), 4 footprints too (1 / 0); counters: 8 emitters moved at creation, 12 follow
 ; updates moved, 16 footprints moved.
@@ -11757,26 +11890,33 @@ mtShLook:
 .int 0
 ; mtGrab: 0 the sensor picked up by touch (runtime), 4 the grab button was pressed while holding it
 ; (runtime), 8 switch: pick up by touch in first person (1 / 0), 12 pickups by touch (counter),
-; 16 switch: no kicking by touch in first person (1 / 0).
+; 16 switch: no kicking by touch in first person (1 / 0), 20 the hand that touched it (1 right,
+; 0 left: it is held in that hand and only that hand's throw gesture throws it), 24 the touched
+; sensor's type (diagnostics).
 mtGrab:
 .int 0
 .int 0
 .int 1
 .int 0
 .int 1
+mtGrabHand:
+.int 1
+.int 0
 ; mtStomp: stomp assist in first person: 0 switch (1 / 0), 4 reach (horizontal distance squared,
 ; 14400 = 120 units), 8 how much of the horizontal distance to the enemy is added to the velocity
-; per frame while falling (float, 0.08), 12 frames it pulled (counter).
+; per frame while falling (float, 0.2 of the way to the landing speed), 12 frames it pulled (counter).
 mtStomp:
 .int 1
 .int 0x46610000
-.int 0x3DA3D70A
+.int 0x3E4CCCCD
 .int 0
 .int 0 ; +16 0.0
 ; diagnostics: +20 calls, +24 falling in first person, +28 the local player's, +32 its Eye sensor
 ; found, +36 the enemy last pulled toward (its owner), +40 enemy contacts seen, +44 the last contact
 ; count; +48 air frames the block lasts still, +52 the blocked enemy, +56 1 = pulled since the last
-; rise, +60 how long a stomped enemy stays blocked (air frames, 90)
+; rise, +60 how long a stomped enemy stays blocked (air frames, 90), +64 the sensor types seen in the
+; contacts while falling (bit mask, diagnostics), +68 1 = also with the camera pulled back behind
+; the head (the 200 camera), 0 = only in the original first person
 .int 0
 .int 0
 .int 0
@@ -11788,6 +11928,9 @@ mtStomp:
 .int 0
 .int 0
 .int 90
+.int 0
+.int 1
+.int 0x41000000 ; +72 the fewest frames to landing the speed is worked out for (8.0: caps the speed)
 mtRumbleData:
 .int 0
 .int 0
