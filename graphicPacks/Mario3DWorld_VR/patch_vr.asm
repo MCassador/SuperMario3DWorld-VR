@@ -1853,6 +1853,12 @@ cmpwi r8, 0
 bne mtViewBackSet1
 lis r8, mtFpBack@ha
 lfs f1, mtFpBack@l(r8)
+; the camera's own offset (mtEyeFit+68, + = forward): the view moves level along where it looks,
+; away from Mario's head (the body drawn under the view comes along)
+lis r8, mtEyeFit@ha
+addi r8, r8, mtEyeFit@l
+lfs f2, 68(r8)
+fsubs f1, f1, f2
 mtViewBackSet1:
 fsubs f0, f0, f1
 stfs f0, 44(r9)
@@ -5894,6 +5900,12 @@ cmpwi r8, 0
 bne mtViewBackSet2
 lis r8, mtFpBack@ha
 lfs f1, mtFpBack@l(r8)
+; the camera's own offset (mtEyeFit+68, + = forward): the view moves level along where it looks,
+; away from Mario's head (the body drawn under the view comes along)
+lis r8, mtEyeFit@ha
+addi r8, r8, mtEyeFit@l
+lfs f2, 68(r8)
+fsubs f1, f1, f2
 mtViewBackSet2:
 fsubs f0, f0, f1
 stfs f0, 44(r9)
@@ -10369,28 +10381,14 @@ bl mtHeadFwd
 mtlr r12
 fmr f0, f5
 fmr f2, f6
-; mtThrow+44 = 2: toward where the hand holding it is, seen from the head (level); a hand closer
-; than mtThrow+88 (squared) to the head keeps the head's facing
+; mtThrow+44 = 2: where the hand holding it points (its glove's fingers, on the ground plane - the
+; arrow of the controller markers), left or right hand; pointing (almost) straight down keeps the
+; head's facing
 lis r11, mtThrow@ha
 addi r11, r11, mtThrow@l
 lwz r0, 44(r11)
 cmpwi r0, 2
 bne mtThrowDirHand
-lwz r0, 64(r10)
-cmpwi r0, 0
-beq mtThrowDirHand
-lwz r0, 60(r10)
-cmpwi r0, 0
-beq mtThrowDirHand
-lfs f7, 36(r10)
-lfs f3, 48(r10)
-fadds f7, f7, f3
-lfs f8, 44(r10)
-lfs f3, 56(r10)
-fadds f8, f8, f3
-lfs f3, 128(r9)
-fmuls f7, f7, f3
-fmuls f8, f8, f3
 lis r11, mtGrabHand@ha
 lwz r0, mtGrabHand@l(r11)
 addi r11, r9, 48
@@ -10405,16 +10403,12 @@ addi r11, r11, 0xB4
 bge mtThrowHandGo
 addi r11, r9, 48
 mtThrowHandGo:
-lfs f3, 12(r11)
-fsubs f3, f3, f7
-lfs f4, 44(r11)
-fsubs f4, f4, f8
+lfs f3, 8(r11)
+lfs f4, 40(r11)
 fmuls f5, f3, f3
 fmuls f6, f4, f4
 fadds f5, f5, f6
-lis r11, mtThrow@ha
-addi r11, r11, mtThrow@l
-lfs f6, 88(r11)
+lfs f6, 124(r9)
 .int 0xFC053000 ; fcmpu cr0, f5, f6
 blt mtThrowDirHand
 fmr f0, f3
@@ -10545,6 +10539,12 @@ cmpwi r0, 0
 beq mtCarryByGrip
 bl mtCarryShrink
 bl mtCarryFace
+; mtThrow+48 = 2: held in front of the body, where the view is (moves with the camera settings,
+; the eye height and the character's size), not in a hand
+lwz r0, 48(r12)
+cmpwi r0, 2
+beq mtCarryFront
+mtCarryFrontNo:
 lis r10, mtPad@ha
 addi r10, r10, mtPad@l
 li r6, 0
@@ -10587,41 +10587,134 @@ lwz r0, mtGrabHand@l(r8)
 cmpwi r0, 0
 bne mtCarryRight
 b mtCarryLeft
-mtCarryBoth:
-; between the two wrists, a little ahead along the head's facing and below (mtThrow+84, +80)
+mtCarryFront:
+; the eyes' middle + the head's facing x (mtThrow+52 + mtThrow+104) ahead, (mtThrow+56 +
+; mtThrow+108) below, both times the character's size
+lis r8, mtHandCam@ha
+addi r8, r8, mtHandCam@l
+lwz r0, 60(r8)
+cmpwi r0, 0
+beq mtCarryFrontNo
+lwz r0, 64(r8)
+cmpwi r0, 0
+beq mtCarryFrontNo
 bl mtHeadFwd
 bl mtCarrySize
-lwz r8, 4(r11)
-addi r8, r8, 0xB4
-lfs f3, 60(r12)
-lfs f4, 84(r12)
-fmuls f4, f4, f9
-lfs f1, 12(r8)
-lfs f2, 60(r9)
+lis r8, mtHandCam@ha
+addi r8, r8, mtHandCam@l
+lfs f4, 60(r12)
+lfs f7, 52(r12)
+lfs f3, 104(r12)
+fadds f7, f7, f3
+fmuls f7, f7, f9
+lfs f1, 36(r8)
+lfs f2, 48(r8)
 fadds f1, f1, f2
-fmuls f1, f1, f3
-fmuls f2, f5, f4
+fmuls f1, f1, f4
+fmuls f2, f5, f7
 fadds f1, f1, f2
 stfs f1, 0(r30)
-lfs f1, 28(r8)
-lfs f2, 76(r9)
+lfs f1, 40(r8)
+lfs f2, 52(r8)
 fadds f1, f1, f2
-fmuls f1, f1, f3
-lfs f2, 80(r12)
+fmuls f1, f1, f4
+lfs f2, 56(r12)
+lfs f3, 108(r12)
+fadds f2, f2, f3
 fmuls f2, f2, f9
 fsubs f1, f1, f2
 stfs f1, 4(r30)
 lfs f1, 44(r8)
-lfs f2, 92(r9)
+lfs f2, 56(r8)
 fadds f1, f1, f2
-fmuls f1, f1, f3
-fmuls f2, f6, f4
+fmuls f1, f1, f4
+fmuls f2, f6, f7
 fadds f1, f1, f2
 stfs f1, 8(r30)
 lwz r8, 40(r12)
 addi r8, r8, 1
 stw r8, 40(r12)
 stw r30, 92(r12)
+lwz r0, 0(r30)
+stw r0, 116(r12)
+lwz r0, 4(r30)
+stw r0, 120(r12)
+lwz r0, 8(r30)
+stw r0, 124(r12)
+b mtCarryDone
+mtCarryBoth:
+; both grips: the reach placement from between the two wrists
+lwz r8, 4(r11)
+addi r8, r8, 0xB4
+lfs f3, 60(r12)
+lfs f10, 12(r8)
+lfs f1, 60(r9)
+fadds f10, f10, f1
+fmuls f10, f10, f3
+lfs f11, 28(r8)
+lfs f1, 76(r9)
+fadds f11, f11, f1
+fmuls f11, f11, f3
+lfs f12, 44(r8)
+lfs f1, 92(r9)
+fadds f12, f12, f1
+fmuls f12, f12, f3
+; mtCarryReach: the hand point W (f10, f11, f12) -> where the object goes: seen from the eyes, the
+; hand's reach is stretched mtThrow+112 times on the level (arm out = far ahead, hand in = close),
+; plus mtThrow+52 ahead along the head's facing; its height is the hand's minus mtThrow+56. The
+; distances grow with the character's size.
+mtCarryReach:
+bl mtHeadFwd
+bl mtCarrySize
+lis r8, mtHandCam@ha
+addi r8, r8, mtHandCam@l
+fmr f1, f10
+fmr f3, f12
+lwz r0, 60(r8)
+cmpwi r0, 0
+beq mtReachGo
+lwz r0, 64(r8)
+cmpwi r0, 0
+beq mtReachGo
+lfs f4, 60(r12)
+lfs f1, 36(r8)
+lfs f2, 48(r8)
+fadds f1, f1, f2
+fmuls f1, f1, f4
+lfs f3, 44(r8)
+lfs f2, 56(r8)
+fadds f3, f3, f2
+fmuls f3, f3, f4
+mtReachGo:
+lfs f4, 112(r12)
+lfs f7, 52(r12)
+fmuls f7, f7, f9
+fsubs f8, f10, f1
+fmuls f8, f8, f4
+fadds f8, f8, f1
+fmuls f2, f5, f7
+fadds f8, f8, f2
+stfs f8, 0(r30)
+lfs f2, 56(r12)
+fmuls f2, f2, f9
+fsubs f8, f11, f2
+stfs f8, 4(r30)
+fsubs f8, f12, f3
+fmuls f8, f8, f4
+fadds f8, f8, f3
+fmuls f2, f6, f7
+fadds f8, f8, f2
+stfs f8, 8(r30)
+lwz r8, 40(r12)
+addi r8, r8, 1
+stw r8, 40(r12)
+stw r30, 92(r12)
+lwz r0, 0(r30)
+stw r0, 116(r12)
+lwz r0, 4(r30)
+stw r0, 120(r12)
+lwz r0, 8(r30)
+stw r0, 124(r12)
 b mtCarryDone
 mtCarryByGrip:
 ; otherwise the left glove when only its grip is held (and it is tracked), else the right one
@@ -10652,46 +10745,15 @@ bne mtCarryDone
 addi r9, r9, 48
 li r5, 0
 mtCarryPlace:
-; mtThrow+48 = 1: the object goes with the hand but sits ahead of it, along where the head faces
-; (mtThrow+52 units ahead of the wrist, mtThrow+56 below, mtThrow+64 outward: to the right of the
-; right hand, to the left of the left one), so it moves with the hand, hangs low and to the side
-; and leaves the view clear (a shell is almost a metre wide at this scale); 0 = along the fingers
+; mtThrow+48 = 1: the object follows the hand's reach (mtCarryReach from its wrist); 0 = along the
+; glove's fingers
 lwz r0, 48(r12)
 cmpwi r0, 0
 beq mtCarryFingers
-bl mtHeadFwd
-bl mtCarrySize
-lfs f4, 64(r12)
-fmuls f4, f4, f9
-cmpwi r5, 0
-beq mtCarrySideR
-fneg f4, f4
-mtCarrySideR:
-lfs f3, 52(r12)
-fmuls f3, f3, f9
-fmuls f7, f5, f3
-fmuls f8, f6, f3
-; the head's right on the ground plane is (-fz, fx)
-fmuls f1, f6, f4
-fsubs f7, f7, f1
-fmuls f1, f5, f4
-fadds f8, f8, f1
-lfs f1, 12(r9)
-fadds f1, f1, f7
-stfs f1, 0(r30)
-lfs f1, 28(r9)
-lfs f3, 56(r12)
-fmuls f3, f3, f9
-fsubs f1, f1, f3
-stfs f1, 4(r30)
-lfs f1, 44(r9)
-fadds f1, f1, f8
-stfs f1, 8(r30)
-lwz r8, 40(r12)
-addi r8, r8, 1
-stw r8, 40(r12)
-stw r30, 92(r12)
-b mtCarryDone
+lfs f10, 12(r9)
+lfs f11, 28(r9)
+lfs f12, 44(r9)
+b mtCarryReach
 mtCarryFingers:
 ; r9 = the glove's 3x4 world matrix: its Z column (the fingers, carrying the glove size) at 8/24/40,
 ; the wrist at 12/28/44; the object goes (mtHandCtl+76 + mtThrow+8) glove units along the fingers
@@ -10717,6 +10779,12 @@ lwz r8, 40(r12)
 addi r8, r8, 1
 stw r8, 40(r12)
 stw r30, 92(r12)
+lwz r0, 0(r30)
+stw r0, 116(r12)
+lwz r0, 4(r30)
+stw r0, 120(r12)
+lwz r0, 8(r30)
+stw r0, 124(r12)
 mtCarryDone:
 mtlr r7
 lwz r0, 0x54(r1)
@@ -10726,7 +10794,7 @@ blr
 ; mtCarryShrink: the object picked up by grip is drawn smaller while held: its pose's scale
 ; (found once as the first (1, 1, 1) triple in its pose keeper [owner+0xC0], kept in
 ; mtGrab+32) is set to mtGrab+36 every frame; mtGrabHold puts 1 back when it is let go.
-; Uses r0, r5, r6, r8, r10 and f1..f4 only.
+; Uses r0, r6, r8, r10 and f1..f4 only.
 mtCarryShrink:
 lis r8, mtGrab@ha
 addi r8, r8, mtGrab@l
@@ -10783,43 +10851,7 @@ mtShrinkNext:
 addi r6, r6, 4
 cmplw r6, r0
 blt mtShrinkScan
-; not in the keeper itself: behind one of its pointers (+4 .. +0x48), the first (1, 1, 1) triple
-; in +0 .. +0x20 of what it points at
-addi r5, r10, 4
-mtShrinkPtrLoop:
-lwz r6, 0(r5)
-lis r0, 0x1000
-cmplw r6, r0
-blt mtShrinkPtrNext
-lis r0, 0x5000
-cmplw r6, r0
-bge mtShrinkPtrNext
-andi. r0, r6, 3
-bne mtShrinkPtrNext
-addi r8, r6, 0x24
-mtShrinkPtrScan:
-lfs f1, 0(r6)
-lfs f2, 4(r6)
-lfs f3, 8(r6)
-.int 0xFC012000 ; fcmpu cr0, f1, f4
-bne mtShrinkPtrStep
-.int 0xFC022000 ; fcmpu cr0, f2, f4
-bne mtShrinkPtrStep
-.int 0xFC032000 ; fcmpu cr0, f3, f4
-beq mtShrinkFoundP
-mtShrinkPtrStep:
-addi r6, r6, 4
-cmplw r6, r8
-blt mtShrinkPtrScan
-mtShrinkPtrNext:
-addi r5, r5, 4
-addi r0, r10, 0x4C
-cmplw r5, r0
-blt mtShrinkPtrLoop
 b mtShrinkDone
-mtShrinkFoundP:
-lis r8, mtGrab@ha
-addi r8, r8, mtGrab@l
 mtShrinkFound:
 stw r6, 32(r8)
 mtShrinkWrite:
@@ -11366,6 +11398,120 @@ stw r11, 0(r12)
 mtRumbleDone:
 blr
 0x02496C00 = bla mtRumble
+
+; Action log (diagnostics, to find the player's clear-pipe action): the game starts an actor's
+; action (animation + state name) through 0x023F8F50 (r3 = actor, r4 = the name). Its step at
+; 0x023F8F68 (lwz r3,0x30(r30); r30 = actor, r4 = name) comes here: names started on the player
+; or its costume actor go into mtActLog's ring (+8, 8 entries, +0 = count); any name starting
+; with 'R' (Route...) also goes to +40 with its actor at +44 and a count at +48.
+mtActLogHook:
+lis r12, mtHideActor@ha
+lwz r11, mtHideActor@l(r12)
+cmpw r11, r30
+beq mtActLogMine
+lis r12, mtHideHost@ha
+lwz r11, mtHideHost@l(r12)
+cmpw r11, r30
+bne mtActLogR
+mtActLogMine:
+; the name is copied (the player's names are built in a buffer that is reused): 24 bytes per entry
+lis r12, mtActLog@ha
+addi r12, r12, mtActLog@l
+stw r30, 4(r12)
+lwz r11, 0(r12)
+addi r11, r11, 1
+stw r11, 0(r12)
+andi. r11, r11, 7
+mulli r11, r11, 24
+add r11, r11, r12
+addi r11, r11, 8
+addi r12, r11, 23
+mr r10, r4
+mtActLogCopy:
+lbz r0, 0(r10)
+stb r0, 0(r11)
+cmpwi r0, 0
+beq mtActLogPipe
+addi r10, r10, 1
+addi r11, r11, 1
+cmplw r11, r12
+blt mtActLogCopy
+li r0, 0
+stb r0, 0(r11)
+mtActLogPipe:
+; Clear pipes (mtActLog+212 = 1): the player's "RouteDokan..." actions = inside a clear pipe. From
+; the original first person the camera goes behind Mario (the 200 camera, as the camera button
+; would) and comes back to first person with the player's next other action.
+lis r12, mtActLog@ha
+addi r12, r12, mtActLog@l
+lwz r0, 212(r12)
+cmpwi r0, 0
+beq mtActLogR
+lbz r0, 0(r4)
+cmpwi r0, 82
+bne mtActLogNoPipe
+lbz r0, 1(r4)
+cmpwi r0, 111
+bne mtActLogNoPipe
+lbz r0, 2(r4)
+cmpwi r0, 117
+bne mtActLogNoPipe
+lbz r0, 3(r4)
+cmpwi r0, 116
+bne mtActLogNoPipe
+lbz r0, 4(r4)
+cmpwi r0, 101
+bne mtActLogNoPipe
+lbz r0, 5(r4)
+cmpwi r0, 68
+bne mtActLogNoPipe
+lwz r0, 216(r12)
+cmpwi r0, 0
+bne mtActLogR
+lis r11, mtControl@ha
+addi r11, r11, mtControl@l
+lwz r0, 28(r11)
+cmpwi r0, 1
+bne mtActLogR
+lis r11, mtEyeBack@ha
+lwz r0, mtEyeBack@l(r11)
+cmpwi r0, 0
+bne mtActLogR
+lis r10, mtEyeBackCtl@ha
+addi r10, r10, mtEyeBackCtl@l
+lwz r0, 16(r10)
+stw r0, mtEyeBack@l(r11)
+li r0, 1
+stw r0, 8(r10)
+stw r0, 216(r12)
+b mtActLogR
+mtActLogNoPipe:
+lwz r0, 216(r12)
+cmpwi r0, 0
+beq mtActLogR
+li r0, 0
+stw r0, 216(r12)
+lis r10, mtEyeBackCtl@ha
+addi r10, r10, mtEyeBackCtl@l
+stw r0, 8(r10)
+lwz r0, 12(r10)
+lis r11, mtEyeBack@ha
+stw r0, mtEyeBack@l(r11)
+mtActLogR:
+lbz r11, 0(r4)
+cmpwi r11, 82
+bne mtActLogDone
+lis r12, mtActLog@ha
+addi r12, r12, mtActLog@l
+stw r4, 200(r12)
+stw r30, 204(r12)
+lwz r11, 208(r12)
+addi r11, r11, 1
+stw r11, 208(r12)
+mtActLogDone:
+lwz r3, 0x30(r30)
+blr
+0x023F8F68 = bla mtActLogHook
 
 ; Stick snapping. The player's stick filter (0x022B2558, r4 -> the stick x/y) pulls a stick held
 ; nearly straight onto the straight line (0x022B1E20 widens that for X, 0x022B212C the general
@@ -12241,7 +12387,7 @@ mtHideMask:
 mtMenuTable:
 .int 0x4D56524D
 .int 1
-.int 16
+.int 17
 .int mtFpBody
 .int mtEyeFit
 .int mrSnapSin
@@ -12258,6 +12404,7 @@ mtMenuTable:
 .int mtThrow
 .int mtLevel
 .int mtGrab
+.int mtActLog
 ; Player body in the original first person (camera distance 0): each bit draws one shape of the
 ; player's own body model (bit 0 = first shape; Mario has 5, Peach 6), so looking down shows the
 ; body; 0 = hidden as in the original. The eyes, face and other parts stay hidden, the gloves
@@ -12374,10 +12521,10 @@ mtThrow:
 .int 0
 .int 0
 .int 0
-.int 1 ; +44 1 = thrown straight where the head faces, 2 = toward where the holding hand is, 0 = where the right controller points
-.int 1 ; +48 1 = held ahead of the hand (along the head's facing), 0 = along the glove's fingers
+.int 1 ; +44 1 = thrown straight where the head faces, 2 = where the holding hand points, 0 = where the right controller points
+.int 1 ; +48 1 = follows the hand's reach (mtCarryReach), 2 = in front of the body (the view), 0 = along the glove's fingers
 .int 0x41A00000 ; +52 how far ahead of the wrist (float, 20 units; menu: 0 .. 40)
-.int 0x420C0000 ; +56 how far below the wrist (float, 35 units; menu: 51 .. 19)
+.int 0x41700000 ; +56 how far below the hand (float, 15 units; menu: 31 .. -1)
 .int 0x3F000000 ; +60 0.5
 .int 0x41F00000 ; +64 how far outward from the hand (float, 30 units)
 .int 0x3BE1FC78 ; +68 1/145 (the offsets are for Mario's eye height, 145)
@@ -12387,8 +12534,14 @@ mtThrow:
 .int 0x41700000 ; +84 held with both hands: ahead of the hands (float, 15 units)
 .int 0x42C80000 ; +88 throw toward the hand: the hand at least 10 units from the head (squared, 100)
 .int 0 ; +92 where the carried object's place was last written (diagnostics)
-.int 1 ; +96 1 = while holding something by grip and standing, Mario faces where the head looks
+.int 0 ; +96 1 = while holding something by grip and standing, Mario faces where the head looks (off: standing then holds it like walking)
 .int 0x3D23D70A ; +100 standing = the left stick below 0.2 (squared, 0.04)
+.int 0x42700000 ; +104 in front of the body: added to the distance (+52) (float, 60)
+.int 0x42200000 ; +108 in front of the body: added to the height below (+56) (float, 40)
+.int 0x3FCCCCCD ; +112 how much the hand's reach is stretched on the level (1.6)
+.int 0 ; +116 the last place written (x, y, z; diagnostics)
+.int 0
+.int 0
 ; mtFx: 0 switch (1 = the player's effects go with the body drawn under the view, 0 = where the
 ; game has them), 4 footprints too (1 / 0); counters: 8 emitters moved at creation, 12 follow
 ; updates moved, 16 footprints moved.
@@ -12444,7 +12597,7 @@ mtGrabHand:
 .int 0
 .int 1 ; +28 1 = picking up needs a grip held, and letting go of all grips throws; 0 = touch alone
 .int 0 ; +32 the held object's scale vector while it is drawn smaller (runtime)
-.int 0x3F19999A ; +36 its size in the hand (float, 0.6; 1 = as the game has it)
+.int 0x3F800000 ; +36 its size in the hand (float, 1 = as the game has it)
 .int 0x3F800000 ; +40 1.0
 ; mtStomp: stomp assist in first person: 0 switch (1 / 0), 4 reach (horizontal distance squared,
 ; 14400 = 120 units), 8 how much of the horizontal distance to the enemy is added to the velocity
@@ -12513,6 +12666,65 @@ mtLevel:
 .int 0
 .int 0
 .int 0
+.int 0
+; mtActLog: 0 player actions counted, 4 the actor of the last, 8.. ring of 8 names (24 bytes each,
+; copied), 200 the last 'R...' action name (pointer), 204 its actor, 208 their count; 212 switch:
+; 1 = the camera goes behind Mario inside clear pipes; 216 1 = it was put there (runtime)
+mtActLog:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 1
 .int 0
 mtRumbleData:
 .int 0
@@ -12706,6 +12918,7 @@ mtEyeFit:
 .int 0x3F800000 ; +56 the body model's scale last measured (runtime; the gloves grow with it)
 .int 0x42DC0000 ; +60 below this eye height the character counts as small (float, 110)
 .int 0x40A00000 ; +64 fine adjustment for a small character (float, +5)
+.int 0 ; +68 the first-person camera this far ahead of Mario's eyes (float, game units; - = behind)
 mtArmTmp:
 .int 0
 .int 0

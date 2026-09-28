@@ -41,11 +41,10 @@ números e interruptores exatos, em [INSTALL.md](INSTALL.md); resumo:
   do chão por padrão, para não jogar no chão com a mão baixa). Só funciona na primeira pessoa
   original, com o controle direito rastreado.
 - **Pegar e arremessar com a mão:** segurando o grip e encostando num casco de Koopa (bola de
-  beisebol, bola de neve, bomba, inimigos), o Mario pega; ele fica na mão do grip, pendurado abaixo
-  e ao lado dela para não tapar a visão. Com os dois grips fica entre as mãos; pegando com o outro
-  grip e soltando o primeiro, passa de uma mão para a outra. Soltar os grips (ou o gesto da mão)
-  arremessa, reto para onde você olha. Vale para todas as formas (pequeno, grande, gato...);
-  distância e altura ajustáveis no menu.
+  beisebol, bola de neve, bomba, inimigos), o Mario pega. O casco acompanha a mão: esticar o braço
+  leva ele para frente, recolher traz de volta; com os dois grips fica entre as mãos e, pegando com
+  o outro grip e soltando o primeiro, troca de mão. Soltar o grip arremessa - para onde você olha
+  ou para onde a mão aponta (menu). Vale para todas as formas; distância e altura no menu.
 - **Mãos que fecham:** segurando o grip a luva fecha o punho; só o gatilho, a mão fica meio fechada;
   sem nada, a luva faz a pose do próprio jogo.
 - **Ajuda na primeira pessoa:** encostar num casco não chuta mais, a sombra fica maior e mais
@@ -71,6 +70,10 @@ números e interruptores exatos, em [INSTALL.md](INSTALL.md); resumo:
   cabeça olha, 1:1 (o "imã" do jogo que endireita o analógico fica desligado na primeira pessoa);
   no menu dá para trocar para onde o controle direito aponta (com sensibilidade ajustável) ou
   para o jeito do jogo.
+- **Tubos transparentes:** ao entrar num tubo transparente em primeira pessoa a câmera vai para
+  trás do Mario (câmera 200) e volta ao sair (opcional no menu).
+- **Câmera e altura:** ajuste da câmera para frente/trás dos olhos do Mario e duas alturas (Mario
+  grande e Mario pequeno), no menu.
 - **Horizonte nivelado (decoupled pitch):** na escolha de fases, nas fases vistas de cima e nas
   cenas, a câmera do jogo fica nivelada (mesmo lugar e direção, sem inclinar para baixo); você
   olha para baixo com a cabeça. Opcional no menu.
