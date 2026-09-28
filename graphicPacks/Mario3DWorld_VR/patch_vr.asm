@@ -7047,6 +7047,15 @@ fmuls f7, f6, f1
 fsubs f4, f4, f7
 fsubs f13, f13, f3
 fsubs f0, f0, f4
+; mtFpBody+28: the view sits this far ahead of the body (+, the body moves back along the view's
+; forward, so looking down does not clip into it) or behind it (-); game units
+lfs f1, 28(r12)
+lfs f2, 8(r7)
+fmuls f2, f2, f1
+fadds f13, f13, f2
+lfs f2, 32(r7)
+fmuls f2, f2, f1
+fadds f0, f0, f2
 mtBodyEyeDone:
 lis r7, mtTurnKeep@ha
 addi r7, r7, mtTurnKeep@l
@@ -10352,6 +10361,56 @@ bl mtHeadFwd
 mtlr r12
 fmr f0, f5
 fmr f2, f6
+; mtThrow+44 = 2: toward where the hand holding it is, seen from the head (level); a hand closer
+; than mtThrow+88 (squared) to the head keeps the head's facing
+lis r11, mtThrow@ha
+addi r11, r11, mtThrow@l
+lwz r0, 44(r11)
+cmpwi r0, 2
+bne mtThrowDirHand
+lwz r0, 64(r10)
+cmpwi r0, 0
+beq mtThrowDirHand
+lwz r0, 60(r10)
+cmpwi r0, 0
+beq mtThrowDirHand
+lfs f7, 36(r10)
+lfs f3, 48(r10)
+fadds f7, f7, f3
+lfs f8, 44(r10)
+lfs f3, 56(r10)
+fadds f8, f8, f3
+lfs f3, 128(r9)
+fmuls f7, f7, f3
+fmuls f8, f8, f3
+lis r11, mtGrabHand@ha
+lwz r0, mtGrabHand@l(r11)
+addi r11, r9, 48
+cmpwi r0, 0
+bne mtThrowHandGo
+lis r11, mtHandCtl@ha
+addi r11, r11, mtHandCtl@l
+lwz r11, 4(r11)
+lis r0, 0x1000
+cmplw r11, r0
+addi r11, r11, 0xB4
+bge mtThrowHandGo
+addi r11, r9, 48
+mtThrowHandGo:
+lfs f3, 12(r11)
+fsubs f3, f3, f7
+lfs f4, 44(r11)
+fsubs f4, f4, f8
+fmuls f5, f3, f3
+fmuls f6, f4, f4
+fadds f5, f5, f6
+lis r11, mtThrow@ha
+addi r11, r11, mtThrow@l
+lfs f6, 88(r11)
+.int 0xFC053000 ; fcmpu cr0, f5, f6
+blt mtThrowDirHand
+fmr f0, f3
+fmr f2, f4
 mtThrowDirHand:
 fmuls f3, f0, f0
 fmuls f4, f2, f2
@@ -10476,6 +10535,7 @@ lis r8, mtGrab@ha
 lwz r0, mtGrab@l(r8)
 cmpwi r0, 0
 beq mtCarryByGrip
+bl mtCarryShrink
 li r6, 0
 lwz r0, 16(r10)
 cmpwi r0, 1
@@ -10648,6 +10708,86 @@ mtlr r7
 lwz r0, 0x54(r1)
 blr
 0x022FFA58 = bla mtCarryPos
+
+; mtCarryShrink: the object picked up by grip is drawn smaller while held: its pose's scale
+; (found once as a (1, 1, 1) triple at +0x18 or +0x1C of the pose [[owner+0xC0]], kept in
+; mtGrab+32) is set to mtGrab+36 every frame; mtGrabHold puts 1 back when it is let go.
+; Uses r0, r6, r8 and f1..f4 only.
+mtCarryShrink:
+lis r8, mtGrab@ha
+addi r8, r8, mtGrab@l
+lfs f4, 40(r8)
+lfs f1, 36(r8)
+.int 0xFC012000 ; fcmpu cr0, f1, f4
+beq mtShrinkDone
+lwz r6, 32(r8)
+cmpwi r6, 0
+bne mtShrinkWrite
+lwz r6, 0(r8)
+lis r0, 0x1000
+cmplw r6, r0
+blt mtShrinkDone
+lis r0, 0x5000
+cmplw r6, r0
+bge mtShrinkDone
+andi. r0, r6, 3
+bne mtShrinkDone
+lwz r6, 0x2C(r6)
+lis r0, 0x1000
+cmplw r6, r0
+blt mtShrinkDone
+lis r0, 0x5000
+cmplw r6, r0
+bge mtShrinkDone
+andi. r0, r6, 3
+bne mtShrinkDone
+lwz r6, 0xC0(r6)
+lis r0, 0x1000
+cmplw r6, r0
+blt mtShrinkDone
+lis r0, 0x5000
+cmplw r6, r0
+bge mtShrinkDone
+andi. r0, r6, 3
+bne mtShrinkDone
+lwz r6, 0(r6)
+lis r0, 0x1000
+cmplw r6, r0
+blt mtShrinkDone
+lis r0, 0x5000
+cmplw r6, r0
+bge mtShrinkDone
+andi. r0, r6, 3
+bne mtShrinkDone
+lfs f1, 0x18(r6)
+lfs f2, 0x1C(r6)
+lfs f3, 0x20(r6)
+.int 0xFC012000 ; fcmpu cr0, f1, f4
+bne mtShrinkTry1C
+.int 0xFC022000 ; fcmpu cr0, f2, f4
+bne mtShrinkTry1C
+.int 0xFC032000 ; fcmpu cr0, f3, f4
+bne mtShrinkTry1C
+addi r6, r6, 0x18
+b mtShrinkFound
+mtShrinkTry1C:
+lfs f1, 0x24(r6)
+.int 0xFC022000 ; fcmpu cr0, f2, f4
+bne mtShrinkDone
+.int 0xFC032000 ; fcmpu cr0, f3, f4
+bne mtShrinkDone
+.int 0xFC012000 ; fcmpu cr0, f1, f4
+bne mtShrinkDone
+addi r6, r6, 0x1C
+mtShrinkFound:
+stw r6, 32(r8)
+mtShrinkWrite:
+lfs f1, 36(r8)
+stfs f1, 0(r6)
+stfs f1, 4(r6)
+stfs f1, 8(r6)
+mtShrinkDone:
+blr
 
 ; mtCarrySize: f9 = the character's size for the carried object's offsets = its eye height
 ; (mrEyeTarget+12) / 145, kept within mtThrow+72 .. +76. Uses r8, f3 and f9 only.
@@ -11766,6 +11906,21 @@ beq mtGrabHoldDone
 lwz r10, 0x1C0(r31)
 cmpw r10, r11
 bne mtGrabHoldClear
+; held by grip (mtGrab+28): kept while a grip is held, thrown when the grips are let go - the
+; buttons and the throw gesture do not throw it
+lwz r0, 28(r12)
+cmpwi r0, 0
+beq mtGrabHoldButtons
+lis r10, mtPad@ha
+addi r10, r10, mtPad@l
+lwz r0, 68(r10)
+lwz r11, 140(r10)
+or r0, r0, r11
+andi. r0, r0, 32
+beq mtGrabHoldThrow
+li r3, 1
+blr
+mtGrabHoldButtons:
 cmpwi r3, 0
 beq mtGrabHoldUp
 li r0, 1
@@ -11795,6 +11950,14 @@ mtGrabHoldClear:
 li r0, 0
 stw r0, 0(r12)
 stw r0, 4(r12)
+lwz r11, 32(r12)
+cmpwi r11, 0
+beq mtGrabHoldDone
+lfs f1, 40(r12)
+stfs f1, 0(r11)
+stfs f1, 4(r11)
+stfs f1, 8(r11)
+stw r0, 32(r12)
 mtGrabHoldDone:
 blr
 0x022916D8 = bla mtGrabHold
@@ -11965,7 +12128,7 @@ mtHideMask:
 mtMenuTable:
 .int 0x4D56524D
 .int 1
-.int 15
+.int 16
 .int mtFpBody
 .int mtEyeFit
 .int mrSnapSin
@@ -11981,12 +12144,14 @@ mtMenuTable:
 .int mtStomp
 .int mtThrow
 .int mtLevel
+.int mtGrab
 ; Player body in the original first person (camera distance 0): each bit draws one shape of the
 ; player's own body model (bit 0 = first shape; Mario has 5, Peach 6), so looking down shows the
 ; body; 0 = hidden as in the original. The eyes, face and other parts stay hidden, the gloves
 ; follow the controllers. Second word: the body is drawn only while the right-stick pull-back
 ; (mtFpBack) is at most this many game units (float; 600 = 0x44160000 = always, the body follows the
-; pulled-back view; 10 = 0x41200000 hides it once pulled back).
+; pulled-back view; 10 = 0x41200000 hides it once pulled back). Eighth word: how far the view
+; sits ahead of the body (float, game units; + moves the body back, - forward; 0 = under the eyes).
 ; Third word: 1 = the head (cap, hair, face) is removed from the body so only the body is seen,
 ; 0 = the head is drawn with it. Fourth word: 1 = the body turns with the view (right stick turning),
 ; 0 = it faces the way the game has it. Fifth word: 1 = each arm (sleeve) reaches from the shoulder
@@ -12002,6 +12167,7 @@ mtFpBody:
 .int 1
 .int 0
 .int 1
+.int 0
 ; the six arm bones' world matrices while mtHeadWrap has them changed
 mtArmSave:
 .int 0
@@ -12095,7 +12261,7 @@ mtThrow:
 .int 0
 .int 0
 .int 0
-.int 1 ; +44 1 = thrown straight where the head faces, 0 = where the right controller points
+.int 1 ; +44 1 = thrown straight where the head faces, 2 = toward where the holding hand is, 0 = where the right controller points
 .int 1 ; +48 1 = held ahead of the hand (along the head's facing), 0 = along the glove's fingers
 .int 0x41A00000 ; +52 how far ahead of the wrist (float, 20 units; menu: 0 .. 40)
 .int 0x420C0000 ; +56 how far below the wrist (float, 35 units; menu: 51 .. 19)
@@ -12106,6 +12272,7 @@ mtThrow:
 .int 0x3FCCCCCD ; +76 1.6, the largest
 .int 0x41200000 ; +80 held with both hands: below the hands (float, 10 units)
 .int 0x41700000 ; +84 held with both hands: ahead of the hands (float, 15 units)
+.int 0x42C80000 ; +88 throw toward the hand: the hand at least 10 units from the head (squared, 100)
 ; mtFx: 0 switch (1 = the player's effects go with the body drawn under the view, 0 = where the
 ; game has them), 4 footprints too (1 / 0); counters: 8 emitters moved at creation, 12 follow
 ; updates moved, 16 footprints moved.
@@ -12160,6 +12327,9 @@ mtGrabHand:
 .int 1
 .int 0
 .int 1 ; +28 1 = picking up needs a grip held, and letting go of all grips throws; 0 = touch alone
+.int 0 ; +32 the held object's scale vector while it is drawn smaller (runtime)
+.int 0x3F19999A ; +36 its size in the hand (float, 0.6; 1 = as the game has it)
+.int 0x3F800000 ; +40 1.0
 ; mtStomp: stomp assist in first person: 0 switch (1 / 0), 4 reach (horizontal distance squared,
 ; 14400 = 120 units), 8 how much of the horizontal distance to the enemy is added to the velocity
 ; per frame while falling (float, 0.2 of the way to the landing speed), 12 frames it pulled (counter).

@@ -15,10 +15,10 @@
   "graphicPacks/Mario3DWorld_FPS/rules.txt": "db8a632d584ae7dd10d860c281e980781c7c63d149880ce7dafe2d145e84e9f5",
   "graphicPacks/Mario3DWorld_ReduceShine/200d8a6490f1d08d_000000000000f249_ps.txt": "ceac5aca80769b686f0686f83124edc542881922930e07508ce05a02ba4aa573",
   "graphicPacks/Mario3DWorld_ReduceShine/rules.txt": "758aef21543258e58fd1026f39d9f03fd310b6316a70a46e99241602622dc2ca",
-  "graphicPacks/Mario3DWorld_VR/patch_vr.asm": "3b9f4dd9555ed8ebc98f8f6677fbb3f2729a608bf2c7a609c2de7452066d95a3",
+  "graphicPacks/Mario3DWorld_VR/patch_vr.asm": "c0e6f75dc71460bc11b6130d6320ed3c4a9133ab4b644f0358347265fce22f19",
   "graphicPacks/Mario3DWorld_VR/rules.txt": "3a551318cd4e4d5ec77dd3b6a53f039ce79ff1dd489cc6ce14b5b2b146aa9c50",
   "layer/VK_LAYER_CEMUVR_core.json": "7ec50e4fdbf190571835fe8dbf0f373928ed8fc6f928f8c0cc064de9771c2fb8",
-  "layer/cemuvr_layer.dll": "257fab7efc57608f7debaeb5e135822050d6c7f81f93837d9115a7ca43917dc4",
+  "layer/cemuvr_layer.dll": "b6df15ebff22e77d2b2ac42c00e88409404d1cc6b147454bf3049845299d54be",
   "licenses/BetterVR-MIT.txt": "36b9352f1a02cd6ab4d003101b0c007446ff37224f22951d927d315efab6da85",
   "licenses/JsonCpp-MIT.txt": "79fee62c25b6c011010a88c3a6a96061fe417c3ad42c1c742ca5b8220fed23c4",
   "licenses/OpenXR-Apache-2.0.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
