@@ -104,13 +104,14 @@ try {
     }
 
     # The glove block of the VR pack (mtHandCtl): its forward offset, prediction gain and jump limit
-    # (20.0, 1.5 and 40000.0 as big-endian floats) sit at offsets 44, 48 and 52. The four glove
+    # (any value, 1.5 and 40000.0 as big-endian floats) sit at offsets 44, 48 and 52; the last two are searched for, because
+    # the forward offset can be saved by the menu and applied before this runs (it was searched for as 20.0 until 02/10). The four glove
     # orientation presets are at 16, 20, 68 and 72; they are saved to $PresetFile when they change.
     $handCtl = [long] 0
     if ($cave -and $PresetFile) {
-        $handSignature = $latin.GetString([byte[]] (0x41, 0xA0, 0, 0, 0x3F, 0xC0, 0, 0, 0x47, 0x1C, 0x40, 0))
+        $handSignature = $latin.GetString([byte[]] (0x3F, 0xC0, 0, 0, 0x47, 0x1C, 0x40, 0))
         $found = $text.IndexOf($handSignature, [StringComparison]::Ordinal)
-        if ($found -ge 44 -and ($found % 4) -eq 0) { $handCtl = $telemetry + $found - 44 }
+        if ($found -ge 48 -and ($found % 4) -eq 0) { $handCtl = $telemetry + $found - 48 }
     }
     $lastPresets = ''
     $lastCamera = ''

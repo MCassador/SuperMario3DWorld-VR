@@ -1559,6 +1559,284 @@ lwz r0, 28(r8)
 cmpwi r0, 1
 bne mtDioramaMath
 mrEyeKeep:
+; Clear pipes in first person (mtTube+0 = 1): while the player moves through one (mtActLog+224),
+; the view turns to where he travels - up, down, around the bends - smoothly: the game's camera (r3)
+; is replaced by a copy (mtTube+64) whose axes face the travel direction (worked out once per frame
+; from the player's movement, eased by mtTube+40). The eyes' place is set further down as usual.
+lis r7, mtTube@ha
+addi r7, r7, mtTube@l
+li r0, 0
+stw r0, 52(r7)
+lwz r0, 0(r7)
+cmpwi r0, 0
+beq mtTubeEnd
+lis r8, mtActLog@ha
+addi r8, r8, mtActLog@l
+lwz r0, 224(r8)
+cmpwi r0, 0
+bne mtTubeIn
+li r0, 0
+stw r0, 32(r7)
+stw r0, 36(r7)
+b mtTubeEnd
+mtTubeIn:
+lis r8, mtHideActor@ha
+lwz r8, mtHideActor@l(r8)
+lis r0, 0x1000
+cmplw r8, r0
+blt mtTubeEnd
+lis r0, 0x5000
+cmplw r8, r0
+bge mtTubeEnd
+andi. r0, r8, 3
+bne mtTubeEnd
+lwz r8, 0xC0(r8)
+lis r0, 0x1000
+cmplw r8, r0
+blt mtTubeEnd
+lis r0, 0x5000
+cmplw r8, r0
+bge mtTubeEnd
+andi. r0, r8, 3
+bne mtTubeEnd
+lwz r8, 0(r8)
+lis r0, 0x1000
+cmplw r8, r0
+blt mtTubeEnd
+lis r0, 0x5000
+cmplw r8, r0
+bge mtTubeEnd
+andi. r0, r8, 3
+bne mtTubeEnd
+lis r11, mtFireStat@ha
+addi r11, r11, mtFireStat@l
+lwz r0, 4(r11)
+lwz r11, 4(r7)
+cmpw r0, r11
+beq mtTubeUse
+stw r0, 4(r7)
+lfs f7, 0(r8)
+lfs f8, 4(r8)
+lfs f9, 8(r8)
+lfs f10, 8(r7)
+lfs f11, 12(r7)
+lfs f12, 16(r7)
+stfs f7, 8(r7)
+stfs f8, 12(r7)
+stfs f9, 16(r7)
+lwz r0, 32(r7)
+li r11, 1
+stw r11, 32(r7)
+cmpwi r0, 0
+beq mtTubeUse
+fsubs f7, f7, f10
+fsubs f8, f8, f11
+fsubs f9, f9, f12
+fmuls f13, f7, f7
+fmuls f12, f8, f8
+fadds f13, f13, f12
+fmuls f12, f9, f9
+fadds f13, f13, f12
+lfs f12, 44(r7)
+.int 0xFC0D6000 ; fcmpu cr0, f13, f12
+blt mtTubeUse
+fmuls f13, f7, f7
+fmuls f12, f8, f8
+fadds f13, f13, f12
+fmuls f12, f9, f9
+fadds f13, f13, f12
+.int 0xFD806834 ; frsqrte f12, f13
+fmuls f11, f12, f12
+fmuls f11, f11, f13
+lfs f0, 48(r7)
+fmuls f11, f11, f0
+lfs f0, 56(r7)
+fsubs f11, f0, f11
+fmuls f12, f12, f11
+fmuls f11, f12, f12
+fmuls f11, f11, f13
+lfs f0, 48(r7)
+fmuls f11, f11, f0
+lfs f0, 56(r7)
+fsubs f11, f0, f11
+fmuls f12, f12, f11
+fmuls f7, f7, f12
+fmuls f8, f8, f12
+fmuls f9, f9, f12
+lwz r0, 36(r7)
+cmpwi r0, 0
+bne mtTubeBlend
+li r0, 1
+stw r0, 36(r7)
+b mtTubeStore
+mtTubeBlend:
+lfs f4, 40(r7)
+lfs f10, 20(r7)
+fsubs f7, f7, f10
+fmuls f7, f7, f4
+fadds f7, f7, f10
+lfs f10, 24(r7)
+fsubs f8, f8, f10
+fmuls f8, f8, f4
+fadds f8, f8, f10
+lfs f10, 28(r7)
+fsubs f9, f9, f10
+fmuls f9, f9, f4
+fadds f9, f9, f10
+fmuls f13, f7, f7
+fmuls f12, f8, f8
+fadds f13, f13, f12
+fmuls f12, f9, f9
+fadds f13, f13, f12
+.int 0xFD806834 ; frsqrte f12, f13
+fmuls f11, f12, f12
+fmuls f11, f11, f13
+lfs f0, 48(r7)
+fmuls f11, f11, f0
+lfs f0, 56(r7)
+fsubs f11, f0, f11
+fmuls f12, f12, f11
+fmuls f11, f12, f12
+fmuls f11, f11, f13
+lfs f0, 48(r7)
+fmuls f11, f11, f0
+lfs f0, 56(r7)
+fsubs f11, f0, f11
+fmuls f12, f12, f11
+fmuls f7, f7, f12
+fmuls f8, f8, f12
+fmuls f9, f9, f12
+mtTubeStore:
+stfs f7, 20(r7)
+stfs f8, 24(r7)
+stfs f9, 28(r7)
+mtTubeUse:
+lwz r0, 36(r7)
+cmpwi r0, 0
+beq mtTubeEnd
+; back = -direction
+lfs f7, 20(r7)
+fneg f7, f7
+lfs f8, 24(r7)
+fneg f8, f8
+lfs f9, 28(r7)
+fneg f9, f9
+; right = up x back = (bz, 0, -bx); straight up or down: the camera's own right made square to back
+fmr f4, f9
+fsubs f5, f9, f9
+fneg f6, f7
+fmuls f13, f4, f4
+fmuls f12, f6, f6
+fadds f13, f13, f12
+lfs f12, 60(r7)
+.int 0xFC0D6000 ; fcmpu cr0, f13, f12
+bge mtTubeRightOk
+lfs f4, 0(r3)
+lfs f5, 4(r3)
+lfs f6, 8(r3)
+fmuls f10, f4, f7
+fmuls f11, f5, f8
+fadds f10, f10, f11
+fmuls f11, f6, f9
+fadds f10, f10, f11
+fmuls f11, f7, f10
+fsubs f4, f4, f11
+fmuls f11, f8, f10
+fsubs f5, f5, f11
+fmuls f11, f9, f10
+fsubs f6, f6, f11
+mtTubeRightOk:
+fmuls f13, f4, f4
+fmuls f12, f5, f5
+fadds f13, f13, f12
+fmuls f12, f6, f6
+fadds f13, f13, f12
+.int 0xFD806834 ; frsqrte f12, f13
+fmuls f11, f12, f12
+fmuls f11, f11, f13
+lfs f0, 48(r7)
+fmuls f11, f11, f0
+lfs f0, 56(r7)
+fsubs f11, f0, f11
+fmuls f12, f12, f11
+fmuls f11, f12, f12
+fmuls f11, f11, f13
+lfs f0, 48(r7)
+fmuls f11, f11, f0
+lfs f0, 56(r7)
+fsubs f11, f0, f11
+fmuls f12, f12, f11
+fmuls f4, f4, f12
+fmuls f5, f5, f12
+fmuls f6, f6, f12
+; up = back x right
+fmuls f10, f8, f6
+fmuls f11, f9, f5
+fsubs f10, f10, f11
+fmuls f11, f9, f4
+fmuls f12, f7, f6
+fsubs f11, f11, f12
+fmuls f12, f7, f5
+fmuls f13, f8, f4
+fsubs f12, f12, f13
+addi r11, r7, 64
+lwz r0, 0(r3)
+stw r0, 0(r11)
+lwz r0, 4(r3)
+stw r0, 4(r11)
+lwz r0, 8(r3)
+stw r0, 8(r11)
+lwz r0, 12(r3)
+stw r0, 12(r11)
+lwz r0, 16(r3)
+stw r0, 16(r11)
+lwz r0, 20(r3)
+stw r0, 20(r11)
+lwz r0, 24(r3)
+stw r0, 24(r11)
+lwz r0, 28(r3)
+stw r0, 28(r11)
+lwz r0, 32(r3)
+stw r0, 32(r11)
+lwz r0, 36(r3)
+stw r0, 36(r11)
+lwz r0, 40(r3)
+stw r0, 40(r11)
+lwz r0, 44(r3)
+stw r0, 44(r11)
+lwz r0, 48(r3)
+stw r0, 48(r11)
+lwz r0, 52(r3)
+stw r0, 52(r11)
+lwz r0, 56(r3)
+stw r0, 56(r11)
+lwz r0, 60(r3)
+stw r0, 60(r11)
+lwz r0, 64(r3)
+stw r0, 64(r11)
+lwz r0, 68(r3)
+stw r0, 68(r11)
+lwz r0, 72(r3)
+stw r0, 72(r11)
+lwz r0, 76(r3)
+stw r0, 76(r11)
+lwz r0, 80(r3)
+stw r0, 80(r11)
+lwz r0, 84(r3)
+stw r0, 84(r11)
+stfs f4, 0(r11)
+stfs f5, 4(r11)
+stfs f6, 8(r11)
+stfs f10, 16(r11)
+stfs f11, 20(r11)
+stfs f12, 24(r11)
+stfs f7, 32(r11)
+stfs f8, 36(r11)
+stfs f9, 40(r11)
+li r0, 1
+stw r0, 52(r7)
+mr r3, r11
+mtTubeEnd:
 lfs f4, 20(r3)
 lfs f5, 40(r3)
 fmuls f4, f4, f5
@@ -2113,6 +2391,171 @@ add r11, r11, r7
 stw r8, 60(r11)
 b mtCameraStamp
 mtDioramaMath:
+; The world map's own turn (mtMapYaw, see mtMapYawInput): the game's camera (r3) is turned round what
+; it looks at (its target, +64) by W = the yaw about the vertical: rows R' = W R, translation so the
+; target stays put, position turned too; the copy (mtMapYaw+36) is used from here on.
+lis r7, mtMapYaw@ha
+addi r7, r7, mtMapYaw@l
+li r0, 0
+stw r0, 4(r7)
+lwz r0, 0(r7)
+cmpwi r0, 0
+beq mtMapYawSkip
+lis r11, mrSceneClass@ha
+lwz r11, mrSceneClass@l(r11)
+cmpwi r11, 0
+beq mtMapYawSkip
+lis r0, 0x1032
+ori r0, r0, 0x86DC
+cmpw r11, r0
+beq mtMapYawSkip
+lfs f7, 16(r7)
+lfs f8, 20(r7)
+addi r11, r7, 36
+lwz r0, 0(r3)
+stw r0, 0(r11)
+lwz r0, 4(r3)
+stw r0, 4(r11)
+lwz r0, 8(r3)
+stw r0, 8(r11)
+lwz r0, 12(r3)
+stw r0, 12(r11)
+lwz r0, 16(r3)
+stw r0, 16(r11)
+lwz r0, 20(r3)
+stw r0, 20(r11)
+lwz r0, 24(r3)
+stw r0, 24(r11)
+lwz r0, 28(r3)
+stw r0, 28(r11)
+lwz r0, 32(r3)
+stw r0, 32(r11)
+lwz r0, 36(r3)
+stw r0, 36(r11)
+lwz r0, 40(r3)
+stw r0, 40(r11)
+lwz r0, 44(r3)
+stw r0, 44(r11)
+lwz r0, 48(r3)
+stw r0, 48(r11)
+lwz r0, 52(r3)
+stw r0, 52(r11)
+lwz r0, 56(r3)
+stw r0, 56(r11)
+lwz r0, 60(r3)
+stw r0, 60(r11)
+lwz r0, 64(r3)
+stw r0, 64(r11)
+lwz r0, 68(r3)
+stw r0, 68(r11)
+lwz r0, 72(r3)
+stw r0, 72(r11)
+lwz r0, 76(r3)
+stw r0, 76(r11)
+lwz r0, 80(r3)
+stw r0, 80(r11)
+lwz r0, 84(r3)
+stw r0, 84(r11)
+lfs f9, 64(r3)
+lfs f10, 68(r3)
+lfs f11, 72(r3)
+; row 0
+lfs f0, 0(r3)
+lfs f1, 4(r3)
+lfs f2, 8(r3)
+fmuls f4, f0, f9
+fmuls f5, f1, f10
+fadds f4, f4, f5
+fmuls f5, f2, f11
+fadds f4, f4, f5
+fmuls f5, f7, f0
+fmuls f6, f8, f2
+fadds f5, f5, f6
+fmuls f6, f7, f2
+fmuls f12, f8, f0
+fsubs f6, f6, f12
+stfs f5, 0(r11)
+stfs f6, 8(r11)
+fmuls f12, f5, f9
+fmuls f13, f1, f10
+fadds f12, f12, f13
+fmuls f13, f6, f11
+fadds f12, f12, f13
+fsubs f4, f4, f12
+lfs f0, 12(r3)
+fadds f4, f4, f0
+stfs f4, 12(r11)
+; row 1
+lfs f0, 16(r3)
+lfs f1, 20(r3)
+lfs f2, 24(r3)
+fmuls f4, f0, f9
+fmuls f5, f1, f10
+fadds f4, f4, f5
+fmuls f5, f2, f11
+fadds f4, f4, f5
+fmuls f5, f7, f0
+fmuls f6, f8, f2
+fadds f5, f5, f6
+fmuls f6, f7, f2
+fmuls f12, f8, f0
+fsubs f6, f6, f12
+stfs f5, 16(r11)
+stfs f6, 24(r11)
+fmuls f12, f5, f9
+fmuls f13, f1, f10
+fadds f12, f12, f13
+fmuls f13, f6, f11
+fadds f12, f12, f13
+fsubs f4, f4, f12
+lfs f0, 28(r3)
+fadds f4, f4, f0
+stfs f4, 28(r11)
+; row 2
+lfs f0, 32(r3)
+lfs f1, 36(r3)
+lfs f2, 40(r3)
+fmuls f4, f0, f9
+fmuls f5, f1, f10
+fadds f4, f4, f5
+fmuls f5, f2, f11
+fadds f4, f4, f5
+fmuls f5, f7, f0
+fmuls f6, f8, f2
+fadds f5, f5, f6
+fmuls f6, f7, f2
+fmuls f12, f8, f0
+fsubs f6, f6, f12
+stfs f5, 32(r11)
+stfs f6, 40(r11)
+fmuls f12, f5, f9
+fmuls f13, f1, f10
+fadds f12, f12, f13
+fmuls f13, f6, f11
+fadds f12, f12, f13
+fsubs f4, f4, f12
+lfs f0, 44(r3)
+fadds f4, f4, f0
+stfs f4, 44(r11)
+; position: target + W (position - target)
+lfs f0, 52(r3)
+fsubs f0, f0, f9
+lfs f2, 60(r3)
+fsubs f2, f2, f11
+fmuls f4, f7, f0
+fmuls f5, f8, f2
+fadds f4, f4, f5
+fadds f4, f4, f9
+stfs f4, 52(r11)
+fmuls f4, f7, f2
+fmuls f5, f8, f0
+fsubs f4, f4, f5
+fadds f4, f4, f11
+stfs f4, 60(r11)
+li r0, 1
+stw r0, 4(r7)
+mr r3, r11
+mtMapYawSkip:
 ; Level horizon (mtLevel+0 = 1): the game's camera (r3: its 3x4 view at 0..44, position at 52) is
 ; replaced by a level copy - same place, same heading, no pitch or roll - so the world stands
 ; upright and you look down with your own head. A camera looking (almost) straight down keeps its
@@ -2174,9 +2617,44 @@ stfs f12, 24(r11)
 stfs f7, 32(r11)
 stfs f12, 36(r11)
 stfs f8, 40(r11)
-lfs f10, 52(r3)
-lfs f11, 56(r3)
-lfs f12, 60(r3)
+; the camera's eye from its own matrix (-R^T t), not its stored position: the level copy stands
+; exactly where the game's view stands
+lfs f0, 0(r3)
+lfs f1, 12(r3)
+fmuls f10, f0, f1
+lfs f0, 16(r3)
+lfs f1, 28(r3)
+fmuls f0, f0, f1
+fadds f10, f10, f0
+lfs f0, 32(r3)
+lfs f1, 44(r3)
+fmuls f0, f0, f1
+fadds f10, f10, f0
+fneg f10, f10
+lfs f0, 4(r3)
+lfs f1, 12(r3)
+fmuls f11, f0, f1
+lfs f0, 20(r3)
+lfs f1, 28(r3)
+fmuls f0, f0, f1
+fadds f11, f11, f0
+lfs f0, 36(r3)
+lfs f1, 44(r3)
+fmuls f0, f0, f1
+fadds f11, f11, f0
+fneg f11, f11
+lfs f0, 8(r3)
+lfs f1, 12(r3)
+fmuls f12, f0, f1
+lfs f0, 24(r3)
+lfs f1, 28(r3)
+fmuls f0, f0, f1
+fadds f12, f12, f0
+lfs f0, 40(r3)
+lfs f1, 44(r3)
+fmuls f0, f0, f1
+fadds f12, f12, f0
+fneg f12, f12
 fmuls f9, f8, f10
 fmuls f0, f7, f12
 fsubs f9, f9, f0
@@ -2996,6 +3474,20 @@ li r12, 2
 and r12, r11, r12
 cmpwi r12, 0
 beq mtMotionRightDoneBit1
+; the left grip held (the left controller tracked) turns the right B into the game's own B (back in the menus, the second
+; jump button): 16384, with its bit taken out of the real pad's
+lwz r12, 16(r9)
+cmpwi r12, 0
+beq mtMotionRightBX
+lwz r12, 68(r9)
+andi. r12, r12, 32
+beq mtMotionRightBX
+ori r5, r5, 16384
+lis r12, 65535
+ori r12, r12, 49151
+and r6, r6, r12
+b mtMotionRightDoneBit1
+mtMotionRightBX:
 ori r5, r5, 8192
 lis r12, 65535
 ori r12, r12, 57343
@@ -3071,6 +3563,14 @@ fadds f12, f12, f10
 lfs f0, 4(r7)
 .int 0xFC0C0000 ; fcmpu cr0, f12, f0
 bge mtMotionReach
+; ... and held up at the head (not more than mtMotionData+20 below it): looking down at a hand that
+; rests in front of the chest must not turn the right stick into the D-pad
+lfs f10, 48(r9)
+lfs f11, 8(r9)
+fsubs f10, f10, f11
+lfs f0, 20(r7)
+.int 0xFC0A0000 ; fcmpu cr0, f10, f0
+blt mtMotionReach
 li r11, 1
 mtMotionReach:
 cmpwi r11, 0
@@ -3598,7 +4098,7 @@ b mrLookInputDone
 mtInputMode:
 lwz r7, 0(r8)
 cmpwi r7, 1
-bne mrLookInputDone
+bne mtMapYawInput
 ; Camera distance button: each press in first person steps mtEyeBack through
 ; the two values of mtEyeBackCtl. Same edge logic as the mode switch; a mask
 ; of zero switches the button off.
@@ -3758,6 +4258,13 @@ mtFpBackMaxOk:
 stfs f0, mtFpBack@l(r11)
 b mtDistDone
 mtDistBehind:
+; put behind Mario automatically (a jump or a clear pipe, mtActLog+216): the right stick only turns,
+; it does not move the camera
+lis r7, mtActLog@ha
+addi r7, r7, mtActLog@l
+lwz r7, 216(r7)
+cmpwi r7, 0
+bne mtDistDone
 lfs f0, mtEyeBack@l(r11)
 lfs f1, 0x18(r4)
 .int 0xFC400A10 ; fabs f2, f1
@@ -3877,7 +4384,95 @@ stfs f0, 0x18(r11)
 addi r11, r11, 0xAC
 addi r9, r9, 1
 b mrLookNext
+b mrLookInputDone
+; The world map (diorama view, not the stage scene): the game turns its camera only 45 degrees each
+; way there. mtMapYaw+0 = 1: the right stick's left-right turns the view instead, freely, round what
+; the camera looks at (mtDioramaMath), and the left stick is turned the same way so Mario still walks
+; where you push; the game gets no left-right on the right stick. mtMapYaw+16/+20 = cos/sin of the
+; turn, eased per pad read by mtMapYaw+8 (radians at full tilt) past the dead zone +12.
+mtMapYawInput:
+lis r12, mtMapYaw@ha
+addi r12, r12, mtMapYaw@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq mrLookInputDone
+lis r11, mrSceneClass@ha
+lwz r11, mrSceneClass@l(r11)
+cmpwi r11, 0
+beq mrLookInputDone
+lis r0, 0x1032
+ori r0, r0, 0x86DC
+cmpw r11, r0
+beq mrLookInputDone
+lfs f1, 0x14(r4)
+.int 0xFC400A10 ; fabs f2, f1
+lfs f0, 12(r12)
+.int 0xFC020000 ; fcmpu cr0, f2, f0
+blt mtMapYawTurnDone
+; d = -x * speed; (c, s) turned by d: c' = c(1 - d^2/2) - s d, s' = s(1 - d^2/2) + c d, back to length 1
+lfs f0, 8(r12)
+fmuls f1, f1, f0
+fneg f1, f1
+fmuls f2, f1, f1
+lfs f0, 24(r12)
+fmuls f2, f2, f0
+lfs f0, 28(r12)
+fsubs f2, f0, f2
+lfs f3, 16(r12)
+lfs f4, 20(r12)
+fmuls f5, f3, f2
+fmuls f6, f4, f1
+fsubs f5, f5, f6
+fmuls f6, f4, f2
+fmuls f7, f3, f1
+fadds f6, f6, f7
+fmuls f2, f5, f5
+fmuls f7, f6, f6
+fadds f2, f2, f7
+lfs f0, 24(r12)
+fmuls f2, f2, f0
+lfs f0, 32(r12)
+fsubs f2, f0, f2
+fmuls f5, f5, f2
+fmuls f6, f6, f2
+stfs f5, 16(r12)
+stfs f6, 20(r12)
+li r0, 0
+stw r0, 0x14(r4)
+mtMapYawTurnDone:
+; the left stick in the turned view: x' = x c - y s, y' = x s + y c
+lfs f3, 16(r12)
+lfs f4, 20(r12)
+lfs f1, 0x0C(r4)
+lfs f2, 0x10(r4)
+fmuls f5, f1, f3
+fmuls f6, f2, f4
+fsubs f5, f5, f6
+fmuls f6, f1, f4
+fmuls f7, f2, f3
+fadds f6, f6, f7
+stfs f5, 0x0C(r4)
+stfs f6, 0x10(r4)
 mrLookInputDone:
+; diagnostics: what the game gets from the first pad read (sticks, buttons) and the camera mode
+lis r12, mtActLog@ha
+addi r12, r12, mtActLog@l
+lwz r11, 0x0C(r4)
+stw r11, 228(r12)
+lwz r11, 0x10(r4)
+stw r11, 232(r12)
+lwz r11, 0x14(r4)
+stw r11, 236(r12)
+lwz r11, 0x18(r4)
+stw r11, 240(r12)
+lwz r11, 0(r4)
+stw r11, 244(r12)
+lis r11, mtControl@ha
+addi r11, r11, mtControl@l
+lwz r0, 0(r11)
+stw r0, 248(r12)
+lwz r0, 28(r11)
+stw r0, 252(r12)
 lwz r0, 0x34(r1)
 mtlr r0
 addi r1, r1, 0x30
@@ -5645,6 +6240,14 @@ addi r11, r11, mtControl@l
 lwz r11, 28(r11)
 cmpwi r11, 1
 bne mtCullDiorama
+; the clear-pipe view (mtTube, see mrEyeKeep) is culled with the same turned camera
+lis r11, mtTube@ha
+addi r11, r11, mtTube@l
+lwz r8, 52(r11)
+cmpwi r8, 0
+beq mtCullTubeNo
+addi r3, r11, 64
+mtCullTubeNo:
 lfs f1, 0(r12)
 lfs f2, 0(r3)
 fmuls f1, f1, f2
@@ -5947,6 +6550,14 @@ stfs f6, 44(r9)
 mtLiftEnd2:
 b mtCullComposed
 mtCullDiorama:
+; the world map turned by mtMapYaw: culled with the same turned camera (its copy, mtMapYaw+36)
+lis r8, mtMapYaw@ha
+addi r8, r8, mtMapYaw@l
+lwz r0, 4(r8)
+cmpwi r0, 0
+beq mtCullMapYawNo
+addi r3, r8, 36
+mtCullMapYawNo:
 lis r8, rrCameraMinusOne@ha
 addi r8, r8, rrCameraMinusOne@l
 lfs f4, 0(r8)
@@ -6368,6 +6979,17 @@ addi r11, r11, 1
 stw r11, mrCullNativeVisible@l(r12)
 b mrCullTestExit
 mrCullTryEyes:
+; Block rescues during pfPipe-flagged actor draws (avoids Black01 bonus room enclosure).
+lis r12, pfPipeState@ha
+addi r12, r12, pfPipeState@l
+lwz r11, 0(r12)
+cmpwi r11, 0
+beq pfPipeRescueAllowed
+lwz r11, 8(r12)
+addi r11, r11, 1
+stw r11, 8(r12)
+b mrCullTestExit
+pfPipeRescueAllowed:
 lis r12, mrCullTests@ha
 lwz r11, mrCullTests@l(r12)
 addi r11, r11, 1
@@ -6391,6 +7013,18 @@ mrCullTestEntry:
 lfd f1, 16(r1)
 lfd f2, 24(r1)
 lfd f3, 32(r1)
+; radius cap: an object with a bounding sphere bigger than mrCullCap (float, +0) is not rescued
+lis r12, mrCullCap@ha
+addi r12, r12, mrCullCap@l
+lfs f10, 0(r12)
+.int 0xFC015000 ; fcmpu cr0, f1, f10
+ble mrCullCapOk
+lwz r11, 8(r12)
+addi r11, r11, 1
+stw r11, 8(r12)
+li r3, 0
+b mrCullTestExit
+mrCullCapOk:
 lwz r4, 12(r1)
 lfs f4, 0(r4)
 lfs f5, 4(r4)
@@ -6438,6 +7072,32 @@ lis r12, mrCullRescues@ha
 lwz r11, mrCullRescues@l(r12)
 addi r11, r11, 1
 stw r11, mrCullRescues@l(r12)
+; the radius of the rescued object: the biggest seen (high word of the double) and a log2 histogram, both in mrCullCap
+stfd f1, 40(r1)
+lwz r11, 40(r1)
+lis r12, mrCullCap@ha
+addi r12, r12, mrCullCap@l
+lwz r10, 12(r12)
+cmplw r11, r10
+ble mrCullNoMax
+stw r11, 12(r12)
+mrCullNoMax:
+lis r10, 0x3FF0
+li r8, 0
+mrCullBkLoop:
+cmplw r11, r10
+blt mrCullBkDone
+lis r9, 0x10
+add r10, r10, r9
+addi r8, r8, 1
+cmpwi r8, 15
+blt mrCullBkLoop
+mrCullBkDone:
+mulli r9, r8, 4
+add r9, r9, r12
+lwz r10, 16(r9)
+addi r10, r10, 1
+stw r10, 16(r9)
 b mrCullTestExit
 mrCullNextEye:
 addi r6, r6, 148
@@ -6451,6 +7111,30 @@ mtlr r0
 addi r1, r1, 0x40
 blr
 
+; mrCullCap: +0 radius cap of the rescue (a float, game units; 8192 since 02/10: the objects of radius 16000 that the rescue drew as black walls at the horizon, 1e12 = no cap), +4 unused, +8 objects refused by it, +12 the biggest rescued
+; radius so far (the high word of the double), +16.. 16 counters: rescued objects with a radius in [2^(k-1), 2^k), k = 0..15 (15 = 16384
+; and up). Read live with a memory probe; the cap can be written live to test it.
+mrCullCap:
+.int 0x46000000
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
 rrDioramaDistance:
 .int 0x3F266666
 rrDioramaAdvance:
@@ -6777,6 +7461,231 @@ b mtHideNativeResume
 ;   every vertex bound to the head (cap, hair, ears, face) collapses into the neck point.
 0x023DAD10 = mtCalcBlockResume:
 mtHeadWrap:
+; Diagnostic (mtGlDbg): does this skeleton's root bone sit where the pack put a glove - this step's matrix or the previous one's?
+lis r11, mtGlDbg@ha
+addi r11, r11, mtGlDbg@l
+lwz r9, 44(r11)
+cmpwi r9, 0
+beq mtGlDone
+lwz r12, 16(r3)
+lis r0, 0x1000
+cmplw r12, r0
+blt mtGlDone
+lis r0, 0x5000
+cmplw r12, r0
+bge mtGlDone
+andi. r0, r12, 3
+bne mtGlDone
+lwz r9, 40(r11)
+addi r9, r9, 1
+stw r9, 40(r11)
+lfs f1, 12(r12)
+lfs f2, 28(r12)
+lfs f3, 44(r12)
+lfs f7, 48(r11)
+lis r10, mtHandW@ha
+addi r10, r10, mtHandW@l
+lfs f4, 12(r10)
+lfs f5, 28(r10)
+lfs f6, 44(r10)
+fsubs f4, f4, f1
+fsubs f5, f5, f2
+fsubs f6, f6, f3
+fmuls f4, f4, f4
+fmuls f5, f5, f5
+fmuls f6, f6, f6
+fadds f4, f4, f5
+fadds f4, f4, f6
+.int 0xFC043800 ; fcmpu cr0, f4, f7
+bge mtGlNoCL
+lwz r9, 24(r11)
+addi r9, r9, 1
+stw r9, 24(r11)
+lwz r9, 64(r11)
+add r12, r11, r9
+li r0, 48
+stb r0, 68(r12)
+addi r9, r9, 1
+andi. r9, r9, 63
+stw r9, 64(r11)
+mtGlNoCL:
+lfs f4, 0(r11)
+lfs f5, 4(r11)
+lfs f6, 8(r11)
+fsubs f4, f4, f1
+fsubs f5, f5, f2
+fsubs f6, f6, f3
+fmuls f4, f4, f4
+fmuls f5, f5, f5
+fmuls f6, f6, f6
+fadds f4, f4, f5
+fadds f4, f4, f6
+.int 0xFC043800 ; fcmpu cr0, f4, f7
+bge mtGlNoPL
+lwz r9, 28(r11)
+addi r9, r9, 1
+stw r9, 28(r11)
+mtGlNoPL:
+lfs f4, 60(r10)
+lfs f5, 76(r10)
+lfs f6, 92(r10)
+fsubs f4, f4, f1
+fsubs f5, f5, f2
+fsubs f6, f6, f3
+fmuls f4, f4, f4
+fmuls f5, f5, f5
+fmuls f6, f6, f6
+fadds f4, f4, f5
+fadds f4, f4, f6
+.int 0xFC043800 ; fcmpu cr0, f4, f7
+bge mtGlNoCR
+lwz r9, 32(r11)
+addi r9, r9, 1
+stw r9, 32(r11)
+lwz r9, 64(r11)
+add r12, r11, r9
+li r0, 49
+stb r0, 68(r12)
+addi r9, r9, 1
+andi. r9, r9, 63
+stw r9, 64(r11)
+mtGlNoCR:
+lfs f4, 12(r11)
+lfs f5, 16(r11)
+lfs f6, 20(r11)
+fsubs f4, f4, f1
+fsubs f5, f5, f2
+fsubs f6, f6, f3
+fmuls f4, f4, f4
+fmuls f5, f5, f5
+fmuls f6, f6, f6
+fadds f4, f4, f5
+fadds f4, f4, f6
+.int 0xFC043800 ; fcmpu cr0, f4, f7
+bge mtGlNoPR
+lwz r9, 36(r11)
+addi r9, r9, 1
+stw r9, 36(r11)
+mtGlNoPR:
+mtGlDone:
+; Glove skeleton (mtGlFix): the glove is drawn with the matrix the arm ends at (mtHandW), whatever the game left in its own transform
+lis r11, mtGlDbg@ha
+addi r11, r11, mtGlDbg@l
+lwz r0, 60(r11)
+cmpwi r0, 0
+beq mtGlFixDone
+lis r10, mtHandCtl@ha
+addi r10, r10, mtHandCtl@l
+lwz r0, 0(r10)
+cmpwi r0, 0
+beq mtGlFixDone
+lis r9, mtEyeBack@ha
+lwz r0, mtEyeBack@l(r9)
+cmpwi r0, 0
+bne mtGlFixDone
+lis r9, mtControl@ha
+addi r9, r9, mtControl@l
+lwz r0, 28(r9)
+cmpwi r0, 1
+bne mtGlFixDone
+li r8, 0
+mtGlFixHand:
+mulli r6, r8, 4
+add r6, r6, r10
+lwz r9, 36(r6)
+lis r0, 0x1000
+cmplw r9, r0
+blt mtGlFixNext
+lis r0, 0x5000
+cmplw r9, r0
+bge mtGlFixNext
+andi. r0, r9, 3
+bne mtGlFixNext
+lwz r9, 24(r9)
+cmpw r9, r3
+bne mtGlFixNext
+lis r9, mtPad@ha
+addi r9, r9, mtPad@l
+li r7, 16
+cmpwi r8, 0
+beq mtGlFixTrk
+li r7, 88
+mtGlFixTrk:
+lwzx r0, r9, r7
+cmpwi r0, 1
+bne mtGlFixNext
+lis r9, mtHandW@ha
+addi r9, r9, mtHandW@l
+mulli r0, r8, 4
+add r7, r9, r0
+lwz r0, 96(r7)
+cmpwi r0, 1
+bne mtGlFixNext
+lwz r12, 16(r3)
+lis r0, 0x1000
+cmplw r12, r0
+blt mtGlFixNext
+lis r0, 0x5000
+cmplw r12, r0
+bge mtGlFixNext
+andi. r0, r12, 3
+bne mtGlFixNext
+lwz r7, 0(r3)
+lis r0, 0x1000
+cmplw r7, r0
+blt mtGlFixNext
+lis r0, 0x5000
+cmplw r7, r0
+bge mtGlFixNext
+lwz r0, 8(r7)
+lis r7, 0x0008
+cmplw r0, r7
+blt mtGlFixNext
+lis r7, 0x0009
+cmplw r0, r7
+bge mtGlFixNext
+mulli r0, r8, 48
+add r9, r9, r0
+li r7, 8
+mtGlFixCopy:
+lwz r0, 0(r9)
+stw r0, 0(r12)
+lwz r0, 4(r9)
+stw r0, 4(r12)
+lwz r0, 8(r9)
+stw r0, 8(r12)
+lwz r0, 12(r9)
+stw r0, 12(r12)
+lwz r0, 16(r9)
+stw r0, 16(r12)
+lwz r0, 20(r9)
+stw r0, 20(r12)
+lwz r0, 24(r9)
+stw r0, 24(r12)
+lwz r0, 28(r9)
+stw r0, 28(r12)
+lwz r0, 32(r9)
+stw r0, 32(r12)
+lwz r0, 36(r9)
+stw r0, 36(r12)
+lwz r0, 40(r9)
+stw r0, 40(r12)
+lwz r0, 44(r9)
+stw r0, 44(r12)
+addi r12, r12, 48
+addi r7, r7, -1
+cmpwi r7, 0
+bgt mtGlFixCopy
+mulli r0, r8, 4
+add r9, r11, r0
+lwz r7, 52(r9)
+addi r7, r7, 1
+stw r7, 52(r9)
+mtGlFixNext:
+addi r8, r8, 1
+cmpwi r8, 2
+blt mtGlFixHand
+mtGlFixDone:
 lis r12, mtControl@ha
 lwz r0, mtControl@l(r12)
 cmpwi r0, 1
@@ -7377,6 +8286,8 @@ stw r0, 60(r11)
 lis r8, mtArmTmp@ha
 addi r8, r8, mtArmTmp@l
 addi r5, r10, 720
+lfs f9, 172(r8)
+lfs f10, 180(r8)
 ; left arm: reach from the shoulder to the VR glove when it is tracked
 lis r9, mtPad@ha
 addi r9, r9, mtPad@l
@@ -7415,12 +8326,145 @@ lwz r0, 124(r5)
 stw r0, 28(r8)
 lwz r0, 140(r5)
 stw r0, 32(r8)
-lwz r0, 192(r6)
+; the glove's position: mtHandW, the newest matrix the pack gave the glove (the part's copy +0xB4 reached the arm a step late)
+lis r9, mtHandW@ha
+addi r9, r9, mtHandW@l
+lwz r0, 96(r9)
+cmpwi r0, 1
+bne mtArmFailL
+lwz r0, 12(r9)
 stw r0, 36(r8)
-lwz r0, 208(r6)
+lwz r0, 28(r9)
 stw r0, 40(r8)
-lwz r0, 224(r6)
+lwz r0, 44(r9)
 stw r0, 44(r8)
+lis r7, 0x0180
+lwz r0, 152(r7)
+cmpwi r0, 1
+bne mtArmLeadNoL
+lis r7, mtGlDbg@ha
+addi r7, r7, mtGlDbg@l
+lfs f1, 36(r8)
+lfs f2, 0(r7)
+fsubs f2, f1, f2
+lfs f3, 40(r8)
+lfs f4, 4(r7)
+fsubs f4, f3, f4
+lfs f5, 44(r8)
+lfs f6, 8(r7)
+fsubs f6, f5, f6
+fmuls f7, f2, f2
+fmuls f8, f4, f4
+fadds f7, f7, f8
+fmuls f8, f6, f6
+fadds f7, f7, f8
+lfs f8, 200(r8)
+.int 0xFC074000 ; fcmpu cr0, f7, f8
+bgt mtArmLeadNoL
+lfs f7, 196(r8)
+fmuls f2, f2, f7
+fadds f1, f1, f2
+stfs f1, 36(r8)
+fmuls f4, f4, f7
+fadds f3, f3, f4
+stfs f3, 40(r8)
+fmuls f6, f6, f7
+fadds f5, f5, f6
+stfs f5, 44(r8)
+mtArmLeadNoL:
+; the wrist (mtArmBend): the glove's place is kept, the arm is built toward a point behind it along the glove's finger axis
+lfs f1, 36(r8)
+stfs f1, 208(r8)
+lfs f2, 40(r8)
+stfs f2, 212(r8)
+lfs f3, 44(r8)
+stfs f3, 216(r8)
+lwz r0, 232(r8)
+cmpwi r0, 0
+beq mtArmBendOffL
+lfs f4, 8(r9)
+lfs f5, 24(r9)
+lfs f6, 40(r9)
+fmuls f7, f4, f4
+fmuls f8, f5, f5
+fadds f7, f7, f8
+fmuls f8, f6, f6
+fadds f7, f7, f8
+lfs f8, 164(r8)
+fmuls f8, f8, f8
+.int 0xFC074000 ; fcmpu cr0, f7, f8
+blt mtArmBendOffL
+.int 0xFD003834 ; frsqrte f8, f7
+lfs f11, 52(r11)
+lfs f12, 56(r11)
+fmuls f13, f8, f8
+fmuls f13, f13, f7
+fmuls f13, f13, f11
+fsubs f13, f12, f13
+fmuls f8, f8, f13
+fmuls f13, f8, f8
+fmuls f13, f13, f7
+fmuls f13, f13, f11
+fsubs f13, f12, f13
+fmuls f8, f8, f13
+fmuls f4, f4, f8
+fmuls f5, f5, f8
+fmuls f6, f6, f8
+stfs f4, 220(r8)
+stfs f5, 224(r8)
+stfs f6, 228(r8)
+lfs f7, 204(r8)
+fmuls f13, f4, f7
+fsubs f1, f1, f13
+stfs f1, 36(r8)
+fmuls f13, f5, f7
+fsubs f2, f2, f13
+stfs f2, 40(r8)
+fmuls f13, f6, f7
+fsubs f3, f3, f13
+stfs f3, 44(r8)
+b mtArmBendDoneL
+mtArmBendOffL:
+li r0, 0
+stw r0, 220(r8)
+stw r0, 224(r8)
+stw r0, 228(r8)
+mtArmBendDoneL:
+lfs f1, 192(r6)
+lfs f2, 12(r9)
+fsubs f1, f1, f2
+fmuls f1, f1, f1
+lfs f3, 208(r6)
+lfs f4, 28(r9)
+fsubs f3, f3, f4
+fmuls f3, f3, f3
+fadds f1, f1, f3
+lfs f3, 224(r6)
+lfs f4, 44(r9)
+fsubs f3, f3, f4
+fmuls f3, f3, f3
+fadds f1, f1, f3
+lis r7, mtGlDbg@ha
+addi r7, r7, mtGlDbg@l
+lfs f2, 48(r7)
+.int 0xFC011000 ; fcmpu cr0, f1, f2
+ble mtArmSameL
+lwz r9, 188(r8)
+addi r9, r9, 1
+stw r9, 188(r8)
+mtArmSameL:
+lwz r9, 192(r8)
+addi r9, r9, 1
+stw r9, 192(r8)
+lis r7, mtGlDbg@ha
+addi r7, r7, mtGlDbg@l
+lwz r9, 64(r7)
+add r6, r7, r9
+li r0, 32
+stb r0, 68(r6)
+addi r9, r9, 1
+andi. r9, r9, 63
+stw r9, 64(r7)
 lfs f1, 12(r8)
 lfs f2, 0(r8)
 fsubs f1, f1, f2
@@ -7599,6 +8643,9 @@ lfs f2, 168(r8)
 .int 0xFC011000 ; fcmpu cr0, f1, f2
 ble mtArmKL
 fmr f1, f2
+lwz r9, 184(r8)
+addi r9, r9, 1
+stw r9, 184(r8)
 mtArmKL:
 stfs f1, 136(r8)
 lwz r0, 0(r5)
@@ -7826,7 +8873,9 @@ fadds f1, f1, f2
 lfs f2, 84(r8)
 fmuls f2, f2, f5
 fadds f1, f1, f2
+fmuls f1, f1, f9
 stfs f1, 4(r5)
+fmuls f1, f1, f10
 stfs f1, 52(r5)
 lfs f1, 100(r8)
 fmuls f1, f1, f4
@@ -7835,7 +8884,9 @@ fadds f1, f1, f2
 lfs f2, 88(r8)
 fmuls f2, f2, f5
 fadds f1, f1, f2
+fmuls f1, f1, f9
 stfs f1, 20(r5)
+fmuls f1, f1, f10
 stfs f1, 68(r5)
 lfs f1, 104(r8)
 fmuls f1, f1, f4
@@ -7844,7 +8895,9 @@ fadds f1, f1, f2
 lfs f2, 92(r8)
 fmuls f2, f2, f5
 fadds f1, f1, f2
+fmuls f1, f1, f9
 stfs f1, 36(r5)
+fmuls f1, f1, f10
 stfs f1, 84(r5)
 lwz r0, 8(r5)
 stw r0, 96(r8)
@@ -7893,7 +8946,9 @@ fadds f1, f1, f2
 lfs f2, 84(r8)
 fmuls f2, f2, f5
 fadds f1, f1, f2
+fmuls f1, f1, f9
 stfs f1, 8(r5)
+fmuls f1, f1, f10
 stfs f1, 56(r5)
 lfs f1, 100(r8)
 fmuls f1, f1, f4
@@ -7902,7 +8957,9 @@ fadds f1, f1, f2
 lfs f2, 88(r8)
 fmuls f2, f2, f5
 fadds f1, f1, f2
+fmuls f1, f1, f9
 stfs f1, 24(r5)
+fmuls f1, f1, f10
 stfs f1, 72(r5)
 lfs f1, 104(r8)
 fmuls f1, f1, f4
@@ -7911,7 +8968,9 @@ fadds f1, f1, f2
 lfs f2, 92(r8)
 fmuls f2, f2, f5
 fadds f1, f1, f2
+fmuls f1, f1, f9
 stfs f1, 40(r5)
+fmuls f1, f1, f10
 stfs f1, 88(r5)
 lfs f4, 120(r8)
 lfs f2, 136(r8)
@@ -7932,21 +8991,128 @@ lfs f2, 8(r8)
 fadds f1, f1, f2
 stfs f1, 92(r5)
 li r0, 0
-lwz r9, 36(r8)
-stw r9, 108(r5)
-lwz r9, 40(r8)
-stw r9, 124(r5)
-lwz r9, 44(r8)
-stw r9, 140(r5)
+lfs f3, 160(r8)
+fsubs f2, f9, f3
+lfs f3, 176(r8)
+fmuls f2, f2, f3
+lfs f1, 220(r8)
+fmuls f1, f1, f2
+lfs f4, 208(r8)
+fadds f1, f1, f4
+stfs f1, 108(r5)
+lfs f1, 224(r8)
+fmuls f1, f1, f2
+lfs f4, 212(r8)
+fadds f1, f1, f4
+stfs f1, 124(r5)
+lfs f1, 228(r8)
+fmuls f1, f1, f2
+lfs f4, 216(r8)
+fadds f1, f1, f4
+stfs f1, 140(r5)
 stw r0, 96(r5)
-stw r0, 100(r5)
-stw r0, 104(r5)
 stw r0, 112(r5)
-stw r0, 116(r5)
-stw r0, 120(r5)
 stw r0, 128(r5)
-stw r0, 132(r5)
-stw r0, 136(r5)
+; the hand bone's cross-section axes: the forearm bone's columns 1 and 2 (52/68/84 and 56/72/88) turned by the smallest rotation taking the arm's
+; axis a to the glove's axis g (R x = x + e x x + e x (e x x) / (1 + c), e = a x g, c = a . g; g = 0 leaves them as they are)
+lfs f1, 60(r8)
+lfs f2, 64(r8)
+lfs f3, 68(r8)
+lfs f4, 220(r8)
+lfs f5, 224(r8)
+lfs f6, 228(r8)
+fmuls f7, f2, f6
+fmuls f8, f3, f5
+fsubs f7, f7, f8
+fmuls f8, f3, f4
+fmuls f11, f1, f6
+fsubs f8, f8, f11
+fmuls f11, f1, f5
+fmuls f12, f2, f4
+fsubs f11, f11, f12
+fmuls f12, f1, f4
+fmuls f13, f2, f5
+fadds f12, f12, f13
+fmuls f13, f3, f6
+fadds f12, f12, f13
+lfs f13, 160(r8)
+fadds f12, f12, f13
+lfs f1, 164(r8)
+.int 0xFC0C0800 ; fcmpu cr0, f12, f1
+bge mtArmBendRotL
+fsubs f7, f13, f13
+fsubs f8, f13, f13
+fsubs f11, f13, f13
+fmr f12, f13
+mtArmBendRotL:
+.int 0xED8D6024 ; fdivs f12, f13, f12
+lfs f1, 52(r5)
+lfs f2, 68(r5)
+lfs f3, 84(r5)
+fmuls f4, f8, f3
+fmuls f13, f11, f2
+fsubs f4, f4, f13
+fmuls f5, f11, f1
+fmuls f13, f7, f3
+fsubs f5, f5, f13
+fmuls f6, f7, f2
+fmuls f13, f8, f1
+fsubs f6, f6, f13
+fmuls f9, f8, f6
+fmuls f13, f11, f5
+fsubs f9, f9, f13
+fmuls f10, f11, f4
+fmuls f13, f7, f6
+fsubs f10, f10, f13
+fmuls f13, f7, f5
+fmuls f0, f8, f4
+fsubs f13, f13, f0
+fmuls f9, f9, f12
+fmuls f10, f10, f12
+fmuls f13, f13, f12
+fadds f1, f1, f4
+fadds f1, f1, f9
+stfs f1, 100(r5)
+fadds f2, f2, f5
+fadds f2, f2, f10
+stfs f2, 116(r5)
+fadds f3, f3, f6
+fadds f3, f3, f13
+stfs f3, 132(r5)
+lfs f1, 56(r5)
+lfs f2, 72(r5)
+lfs f3, 88(r5)
+fmuls f4, f8, f3
+fmuls f13, f11, f2
+fsubs f4, f4, f13
+fmuls f5, f11, f1
+fmuls f13, f7, f3
+fsubs f5, f5, f13
+fmuls f6, f7, f2
+fmuls f13, f8, f1
+fsubs f6, f6, f13
+fmuls f9, f8, f6
+fmuls f13, f11, f5
+fsubs f9, f9, f13
+fmuls f10, f11, f4
+fmuls f13, f7, f6
+fsubs f10, f10, f13
+fmuls f13, f7, f5
+fmuls f0, f8, f4
+fsubs f13, f13, f0
+fmuls f9, f9, f12
+fmuls f10, f10, f12
+fmuls f13, f13, f12
+fadds f1, f1, f4
+fadds f1, f1, f9
+stfs f1, 104(r5)
+fadds f2, f2, f5
+fadds f2, f2, f10
+stfs f2, 120(r5)
+fadds f3, f3, f6
+fadds f3, f3, f13
+stfs f3, 136(r5)
+mtArmEndPointL:
 b mtArmDoneL
 mtArmFailL:
 ; not tracked (or a degenerate pose): the arm shrinks into the shoulder
@@ -7980,6 +9146,8 @@ stw r0, 132(r5)
 stw r0, 136(r5)
 mtArmDoneL:
 addi r5, r10, 912
+lfs f9, 172(r8)
+lfs f10, 180(r8)
 ; right arm: reach from the shoulder to the VR glove when it is tracked
 lis r9, mtPad@ha
 addi r9, r9, mtPad@l
@@ -8018,12 +9186,145 @@ lwz r0, 124(r5)
 stw r0, 28(r8)
 lwz r0, 140(r5)
 stw r0, 32(r8)
-lwz r0, 192(r6)
+; the glove's position: mtHandW, the newest matrix the pack gave the glove (the part's copy +0xB4 reached the arm a step late)
+lis r9, mtHandW@ha
+addi r9, r9, mtHandW@l
+lwz r0, 100(r9)
+cmpwi r0, 1
+bne mtArmFailR
+lwz r0, 60(r9)
 stw r0, 36(r8)
-lwz r0, 208(r6)
+lwz r0, 76(r9)
 stw r0, 40(r8)
-lwz r0, 224(r6)
+lwz r0, 92(r9)
 stw r0, 44(r8)
+lis r7, 0x0180
+lwz r0, 152(r7)
+cmpwi r0, 1
+bne mtArmLeadNoR
+lis r7, mtGlDbg@ha
+addi r7, r7, mtGlDbg@l
+lfs f1, 36(r8)
+lfs f2, 12(r7)
+fsubs f2, f1, f2
+lfs f3, 40(r8)
+lfs f4, 16(r7)
+fsubs f4, f3, f4
+lfs f5, 44(r8)
+lfs f6, 20(r7)
+fsubs f6, f5, f6
+fmuls f7, f2, f2
+fmuls f8, f4, f4
+fadds f7, f7, f8
+fmuls f8, f6, f6
+fadds f7, f7, f8
+lfs f8, 200(r8)
+.int 0xFC074000 ; fcmpu cr0, f7, f8
+bgt mtArmLeadNoR
+lfs f7, 196(r8)
+fmuls f2, f2, f7
+fadds f1, f1, f2
+stfs f1, 36(r8)
+fmuls f4, f4, f7
+fadds f3, f3, f4
+stfs f3, 40(r8)
+fmuls f6, f6, f7
+fadds f5, f5, f6
+stfs f5, 44(r8)
+mtArmLeadNoR:
+; the wrist (mtArmBend): the glove's place is kept, the arm is built toward a point behind it along the glove's finger axis
+lfs f1, 36(r8)
+stfs f1, 208(r8)
+lfs f2, 40(r8)
+stfs f2, 212(r8)
+lfs f3, 44(r8)
+stfs f3, 216(r8)
+lwz r0, 232(r8)
+cmpwi r0, 0
+beq mtArmBendOffR
+lfs f4, 56(r9)
+lfs f5, 72(r9)
+lfs f6, 88(r9)
+fmuls f7, f4, f4
+fmuls f8, f5, f5
+fadds f7, f7, f8
+fmuls f8, f6, f6
+fadds f7, f7, f8
+lfs f8, 164(r8)
+fmuls f8, f8, f8
+.int 0xFC074000 ; fcmpu cr0, f7, f8
+blt mtArmBendOffR
+.int 0xFD003834 ; frsqrte f8, f7
+lfs f11, 52(r11)
+lfs f12, 56(r11)
+fmuls f13, f8, f8
+fmuls f13, f13, f7
+fmuls f13, f13, f11
+fsubs f13, f12, f13
+fmuls f8, f8, f13
+fmuls f13, f8, f8
+fmuls f13, f13, f7
+fmuls f13, f13, f11
+fsubs f13, f12, f13
+fmuls f8, f8, f13
+fmuls f4, f4, f8
+fmuls f5, f5, f8
+fmuls f6, f6, f8
+stfs f4, 220(r8)
+stfs f5, 224(r8)
+stfs f6, 228(r8)
+lfs f7, 204(r8)
+fmuls f13, f4, f7
+fsubs f1, f1, f13
+stfs f1, 36(r8)
+fmuls f13, f5, f7
+fsubs f2, f2, f13
+stfs f2, 40(r8)
+fmuls f13, f6, f7
+fsubs f3, f3, f13
+stfs f3, 44(r8)
+b mtArmBendDoneR
+mtArmBendOffR:
+li r0, 0
+stw r0, 220(r8)
+stw r0, 224(r8)
+stw r0, 228(r8)
+mtArmBendDoneR:
+lfs f1, 192(r6)
+lfs f2, 60(r9)
+fsubs f1, f1, f2
+fmuls f1, f1, f1
+lfs f3, 208(r6)
+lfs f4, 76(r9)
+fsubs f3, f3, f4
+fmuls f3, f3, f3
+fadds f1, f1, f3
+lfs f3, 224(r6)
+lfs f4, 92(r9)
+fsubs f3, f3, f4
+fmuls f3, f3, f3
+fadds f1, f1, f3
+lis r7, mtGlDbg@ha
+addi r7, r7, mtGlDbg@l
+lfs f2, 48(r7)
+.int 0xFC011000 ; fcmpu cr0, f1, f2
+ble mtArmSameR
+lwz r9, 188(r8)
+addi r9, r9, 1
+stw r9, 188(r8)
+mtArmSameR:
+lwz r9, 192(r8)
+addi r9, r9, 1
+stw r9, 192(r8)
+lis r7, mtGlDbg@ha
+addi r7, r7, mtGlDbg@l
+lwz r9, 64(r7)
+add r6, r7, r9
+li r0, 33
+stb r0, 68(r6)
+addi r9, r9, 1
+andi. r9, r9, 63
+stw r9, 64(r7)
 lfs f1, 12(r8)
 lfs f2, 0(r8)
 fsubs f1, f1, f2
@@ -8202,6 +9503,9 @@ lfs f2, 168(r8)
 .int 0xFC011000 ; fcmpu cr0, f1, f2
 ble mtArmKR
 fmr f1, f2
+lwz r9, 184(r8)
+addi r9, r9, 1
+stw r9, 184(r8)
 mtArmKR:
 stfs f1, 136(r8)
 lwz r0, 0(r5)
@@ -8429,7 +9733,9 @@ fadds f1, f1, f2
 lfs f2, 84(r8)
 fmuls f2, f2, f5
 fadds f1, f1, f2
+fmuls f1, f1, f9
 stfs f1, 4(r5)
+fmuls f1, f1, f10
 stfs f1, 52(r5)
 lfs f1, 100(r8)
 fmuls f1, f1, f4
@@ -8438,7 +9744,9 @@ fadds f1, f1, f2
 lfs f2, 88(r8)
 fmuls f2, f2, f5
 fadds f1, f1, f2
+fmuls f1, f1, f9
 stfs f1, 20(r5)
+fmuls f1, f1, f10
 stfs f1, 68(r5)
 lfs f1, 104(r8)
 fmuls f1, f1, f4
@@ -8447,7 +9755,9 @@ fadds f1, f1, f2
 lfs f2, 92(r8)
 fmuls f2, f2, f5
 fadds f1, f1, f2
+fmuls f1, f1, f9
 stfs f1, 36(r5)
+fmuls f1, f1, f10
 stfs f1, 84(r5)
 lwz r0, 8(r5)
 stw r0, 96(r8)
@@ -8496,7 +9806,9 @@ fadds f1, f1, f2
 lfs f2, 84(r8)
 fmuls f2, f2, f5
 fadds f1, f1, f2
+fmuls f1, f1, f9
 stfs f1, 8(r5)
+fmuls f1, f1, f10
 stfs f1, 56(r5)
 lfs f1, 100(r8)
 fmuls f1, f1, f4
@@ -8505,7 +9817,9 @@ fadds f1, f1, f2
 lfs f2, 88(r8)
 fmuls f2, f2, f5
 fadds f1, f1, f2
+fmuls f1, f1, f9
 stfs f1, 24(r5)
+fmuls f1, f1, f10
 stfs f1, 72(r5)
 lfs f1, 104(r8)
 fmuls f1, f1, f4
@@ -8514,7 +9828,9 @@ fadds f1, f1, f2
 lfs f2, 92(r8)
 fmuls f2, f2, f5
 fadds f1, f1, f2
+fmuls f1, f1, f9
 stfs f1, 40(r5)
+fmuls f1, f1, f10
 stfs f1, 88(r5)
 lfs f4, 120(r8)
 lfs f2, 136(r8)
@@ -8535,21 +9851,128 @@ lfs f2, 8(r8)
 fadds f1, f1, f2
 stfs f1, 92(r5)
 li r0, 0
-lwz r9, 36(r8)
-stw r9, 108(r5)
-lwz r9, 40(r8)
-stw r9, 124(r5)
-lwz r9, 44(r8)
-stw r9, 140(r5)
+lfs f3, 160(r8)
+fsubs f2, f9, f3
+lfs f3, 176(r8)
+fmuls f2, f2, f3
+lfs f1, 220(r8)
+fmuls f1, f1, f2
+lfs f4, 208(r8)
+fadds f1, f1, f4
+stfs f1, 108(r5)
+lfs f1, 224(r8)
+fmuls f1, f1, f2
+lfs f4, 212(r8)
+fadds f1, f1, f4
+stfs f1, 124(r5)
+lfs f1, 228(r8)
+fmuls f1, f1, f2
+lfs f4, 216(r8)
+fadds f1, f1, f4
+stfs f1, 140(r5)
 stw r0, 96(r5)
-stw r0, 100(r5)
-stw r0, 104(r5)
 stw r0, 112(r5)
-stw r0, 116(r5)
-stw r0, 120(r5)
 stw r0, 128(r5)
-stw r0, 132(r5)
-stw r0, 136(r5)
+; the hand bone's cross-section axes: the forearm bone's columns 1 and 2 (52/68/84 and 56/72/88) turned by the smallest rotation taking the arm's
+; axis a to the glove's axis g (R x = x + e x x + e x (e x x) / (1 + c), e = a x g, c = a . g; g = 0 leaves them as they are)
+lfs f1, 60(r8)
+lfs f2, 64(r8)
+lfs f3, 68(r8)
+lfs f4, 220(r8)
+lfs f5, 224(r8)
+lfs f6, 228(r8)
+fmuls f7, f2, f6
+fmuls f8, f3, f5
+fsubs f7, f7, f8
+fmuls f8, f3, f4
+fmuls f11, f1, f6
+fsubs f8, f8, f11
+fmuls f11, f1, f5
+fmuls f12, f2, f4
+fsubs f11, f11, f12
+fmuls f12, f1, f4
+fmuls f13, f2, f5
+fadds f12, f12, f13
+fmuls f13, f3, f6
+fadds f12, f12, f13
+lfs f13, 160(r8)
+fadds f12, f12, f13
+lfs f1, 164(r8)
+.int 0xFC0C0800 ; fcmpu cr0, f12, f1
+bge mtArmBendRotR
+fsubs f7, f13, f13
+fsubs f8, f13, f13
+fsubs f11, f13, f13
+fmr f12, f13
+mtArmBendRotR:
+.int 0xED8D6024 ; fdivs f12, f13, f12
+lfs f1, 52(r5)
+lfs f2, 68(r5)
+lfs f3, 84(r5)
+fmuls f4, f8, f3
+fmuls f13, f11, f2
+fsubs f4, f4, f13
+fmuls f5, f11, f1
+fmuls f13, f7, f3
+fsubs f5, f5, f13
+fmuls f6, f7, f2
+fmuls f13, f8, f1
+fsubs f6, f6, f13
+fmuls f9, f8, f6
+fmuls f13, f11, f5
+fsubs f9, f9, f13
+fmuls f10, f11, f4
+fmuls f13, f7, f6
+fsubs f10, f10, f13
+fmuls f13, f7, f5
+fmuls f0, f8, f4
+fsubs f13, f13, f0
+fmuls f9, f9, f12
+fmuls f10, f10, f12
+fmuls f13, f13, f12
+fadds f1, f1, f4
+fadds f1, f1, f9
+stfs f1, 100(r5)
+fadds f2, f2, f5
+fadds f2, f2, f10
+stfs f2, 116(r5)
+fadds f3, f3, f6
+fadds f3, f3, f13
+stfs f3, 132(r5)
+lfs f1, 56(r5)
+lfs f2, 72(r5)
+lfs f3, 88(r5)
+fmuls f4, f8, f3
+fmuls f13, f11, f2
+fsubs f4, f4, f13
+fmuls f5, f11, f1
+fmuls f13, f7, f3
+fsubs f5, f5, f13
+fmuls f6, f7, f2
+fmuls f13, f8, f1
+fsubs f6, f6, f13
+fmuls f9, f8, f6
+fmuls f13, f11, f5
+fsubs f9, f9, f13
+fmuls f10, f11, f4
+fmuls f13, f7, f6
+fsubs f10, f10, f13
+fmuls f13, f7, f5
+fmuls f0, f8, f4
+fsubs f13, f13, f0
+fmuls f9, f9, f12
+fmuls f10, f10, f12
+fmuls f13, f13, f12
+fadds f1, f1, f4
+fadds f1, f1, f9
+stfs f1, 104(r5)
+fadds f2, f2, f5
+fadds f2, f2, f10
+stfs f2, 120(r5)
+fadds f3, f3, f6
+fadds f3, f3, f13
+stfs f3, 136(r5)
+mtArmEndPointR:
 b mtArmDoneR
 mtArmFailR:
 ; not tracked (or a degenerate pose): the arm shrinks into the shoulder
@@ -9923,11 +11346,109 @@ fmuls f1, f1, f2
 fadds f0, f0, f1
 stfs f0, 40(r4)
 ; glove size: every axis of the glove's rotation is scaled
+; Peach, Rosalina, Toad and their small forms have hand models about half of Mario's size (see mtGloveSize), so they get
+; their own sizes, told by the model's vertex count: ResModel = [model + 0x24], total vertices at ResModel + 0x28
+; (the models are the ones captured in mtHandCtl+36 / +40). Everything else keeps the two classes below.
+lis r8, mtGloveSize@ha
+addi r8, r8, mtGloveSize@l
+lis r6, mtArmTmp@ha
+addi r6, r6, mtArmTmp@l
+lwz r0, 28(r8)
+stw r0, 172(r6)
+stw r0, 180(r6)
+lfs f4, 52(r8)
+lfs f5, 28(r8)
+lfs f6, 84(r8)
+stfs f6, 176(r6)
+lfs f7, 88(r8)
+stfs f7, 168(r6)
 lwz r5, 64(r11)
 lfs f0, 56(r11)
 cmpwi r5, 0
-beq mtHandSizeSet
+beq mtGlvClass
 lfs f0, 60(r11)
+mtGlvClass:
+lfs f1, 104(r8)
+fmuls f1, f1, f0
+lfs f2, 28(r8)
+.int 0xFC011000 ; fcmpu cr0, f1, f2
+ble mtGlvThick
+fmr f1, f2
+mtGlvThick:
+stfs f1, 172(r6)
+mulli r5, r10, 4
+add r5, r5, r11
+lwz r5, 36(r5)
+lis r0, 0x1000
+cmplw r5, r0
+blt mtHandSizeSet
+lis r0, 0x5000
+cmplw r5, r0
+bge mtHandSizeSet
+lwz r5, 0x24(r5)
+lis r0, 0x1000
+cmplw r5, r0
+blt mtHandSizeSet
+lis r0, 0x5000
+cmplw r5, r0
+bge mtHandSizeSet
+lis r12, 0x464D
+ori r12, r12, 0x444C
+lwz r0, 0(r5)
+cmpw r0, r12
+bne mtHandSizeSet
+lwz r5, 0x28(r5)
+cmpwi r5, 2400
+blt mtHandSizeSet
+cmpwi r5, 3600
+bgt mtHandSizeSet
+lfs f1, 120(r6)
+cmpwi r5, 3300
+bge mtGlvToad
+lfs f0, 0(r8)
+lfs f3, 36(r8)
+lfs f4, 56(r8)
+lfs f6, 80(r8)
+lfs f2, 8(r8)
+.int 0xFC011000 ; fcmpu cr0, f1, f2
+blt mtGlvSet
+lfs f2, 12(r8)
+.int 0xFC011000 ; fcmpu cr0, f1, f2
+bge mtGlvSet
+lfs f0, 4(r8)
+lfs f3, 40(r8)
+lfs f4, 60(r8)
+lfs f6, 80(r8)
+lfs f7, 100(r8)
+b mtGlvSet
+mtGlvToad:
+lfs f0, 16(r8)
+lfs f3, 44(r8)
+lfs f4, 64(r8)
+lfs f5, 76(r8)
+lfs f6, 84(r8)
+lfs f7, 92(r8)
+lfs f2, 8(r8)
+.int 0xFC011000 ; fcmpu cr0, f1, f2
+blt mtGlvSet
+lfs f2, 20(r8)
+.int 0xFC011000 ; fcmpu cr0, f1, f2
+bge mtGlvSet
+lfs f0, 24(r8)
+lfs f3, 48(r8)
+lfs f4, 68(r8)
+lfs f5, 28(r8)
+lfs f6, 84(r8)
+lfs f7, 96(r8)
+mtGlvSet:
+stfs f3, 172(r6)
+stfs f5, 180(r6)
+stfs f6, 176(r6)
+stfs f7, 168(r6)
+lfs f1, 56(r11)
+lfs f2, 32(r8)
+fmuls f1, f1, f2
+fmuls f0, f0, f1
 mtHandSizeSet:
 ; ... times the body model's own scale (1; bigger with the Mega Mushroom), mtEyeFit+56
 lis r5, mtEyeFit@ha
@@ -9961,6 +11482,36 @@ stfs f1, 36(r4)
 lfs f1, 40(r4)
 fmuls f1, f1, f0
 stfs f1, 40(r4)
+; centring: the middle of the glove lies f4 glove units along its fingers (mtGloveSize+52..+68, times +72); the wrist is moved
+; back by that along the fingers (the Z column, already scaled by the glove's size) so the middle of the hand sits on the
+; controller's point (plus mtHandCtl+44). The vector the wrist was moved by is kept in mtHandShift for the carried object.
+lfs f1, 72(r8)
+fmuls f4, f4, f1
+lis r5, mtHandShift@ha
+addi r5, r5, mtHandShift@l
+mulli r0, r10, 12
+add r5, r5, r0
+lfs f1, 8(r4)
+fmuls f1, f1, f4
+lfs f2, 12(r4)
+fsubs f2, f2, f1
+stfs f2, 12(r4)
+fneg f1, f1
+stfs f1, 0(r5)
+lfs f1, 24(r4)
+fmuls f1, f1, f4
+lfs f2, 28(r4)
+fsubs f2, f2, f1
+stfs f2, 28(r4)
+fneg f1, f1
+stfs f1, 4(r5)
+lfs f1, 40(r4)
+fmuls f1, f1, f4
+lfs f2, 44(r4)
+fsubs f2, f2, f1
+stfs f2, 44(r4)
+fneg f1, f1
+stfs f1, 8(r5)
 addi r5, r3, 0xB4
 lwz r0, 0(r4)
 stw r0, 0(r5)
@@ -9990,6 +11541,25 @@ lis r9, mtHandW@ha
 addi r9, r9, mtHandW@l
 mulli r5, r10, 48
 add r5, r5, r9
+lis r8, mtGlDbg@ha
+addi r8, r8, mtGlDbg@l
+mulli r0, r10, 12
+add r8, r8, r0
+lwz r0, 12(r5)
+stw r0, 0(r8)
+lwz r0, 28(r5)
+stw r0, 4(r8)
+lwz r0, 44(r5)
+stw r0, 8(r8)
+lis r12, mtGlDbg@ha
+addi r12, r12, mtGlDbg@l
+lwz r8, 64(r12)
+add r6, r12, r8
+addi r0, r10, 0x10
+stb r0, 68(r6)
+addi r8, r8, 1
+andi. r8, r8, 63
+stw r8, 64(r12)
 lwz r0, 0(r4)
 stw r0, 0(r5)
 lwz r0, 4(r4)
@@ -10194,6 +11764,29 @@ lwz r0, 28(r1)
 blr
 0x02421264 = bla mtCamParamsB
 
+; The player-moved cameras (the world map's, "UserMove"): their parameter blocks are built at 0x0242D858
+; (and 0x0242B484, a smaller one of the same kind)
+; with the horizontal turn limited to +45 / -45 degrees (+0xC / +0x10). Its last step (0x0242D8C4,
+; lwz r0,0xc(r1); r3 = the block, 0 when it could not be made) comes here: with mtCam on, the
+; limits become mtCam+8 / +4, so the right stick turns the map camera freely too.
+mtUserMoveWide:
+cmpwi r3, 0
+beq mtUserMoveDone
+lis r12, mtCam@ha
+addi r12, r12, mtCam@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq mtUserMoveDone
+lfs f0, 8(r12)
+stfs f0, 0xC(r3)
+lfs f0, 4(r12)
+stfs f0, 0x10(r3)
+mtUserMoveDone:
+lwz r0, 0xc(r1)
+blr
+0x0242D8C4 = bla mtUserMoveWide
+0x0242B4E4 = bla mtUserMoveWide
+
 
 ; Thrown fireball, direction. The set-up routine copies Mario's facing vector to 8(r1); the fireball's start
 ; velocity is that vector times the speed (minus Mario's up vector times a fall speed) and the
@@ -10367,13 +11960,6 @@ lfs f2, 120(r9)
 lis r10, mtThrow@ha
 addi r10, r10, mtThrow@l
 lwz r0, 44(r10)
-cmpwi r0, 0
-beq mtThrowDirHand
-lis r10, mtHandCam@ha
-addi r10, r10, mtHandCam@l
-lwz r0, 60(r10)
-lwz r11, 64(r10)
-add r0, r0, r11
 cmpwi r0, 0
 beq mtThrowDirHand
 mflr r12
@@ -10659,6 +12245,24 @@ lfs f12, 44(r8)
 lfs f1, 92(r9)
 fadds f12, f12, f1
 fmuls f12, f12, f3
+; the wrists as they were before the centring (mtHandShift)
+lis r8, mtHandShift@ha
+addi r8, r8, mtHandShift@l
+lfs f1, 0(r8)
+lfs f2, 12(r8)
+fadds f1, f1, f2
+fmuls f1, f1, f3
+fsubs f10, f10, f1
+lfs f1, 4(r8)
+lfs f2, 16(r8)
+fadds f1, f1, f2
+fmuls f1, f1, f3
+fsubs f11, f11, f1
+lfs f1, 8(r8)
+lfs f2, 20(r8)
+fadds f1, f1, f2
+fmuls f1, f1, f3
+fsubs f12, f12, f1
 ; mtCarryReach: the hand point W (f10, f11, f12) -> where the object goes: seen from the eyes, the
 ; hand's reach is stretched mtThrow+112 times on the level (arm out = far ahead, hand in = close),
 ; plus mtThrow+52 ahead along the head's facing; its height is the hand's minus mtThrow+56. The
@@ -10753,6 +12357,19 @@ beq mtCarryFingers
 lfs f10, 12(r9)
 lfs f11, 28(r9)
 lfs f12, 44(r9)
+; the wrist as it was before the centring (mtHandShift; r5 = 1 left, 0 right)
+lis r8, mtHandShift@ha
+addi r8, r8, mtHandShift@l
+cmpwi r5, 1
+beq mtCarryShL
+addi r8, r8, 12
+mtCarryShL:
+lfs f1, 0(r8)
+fsubs f10, f10, f1
+lfs f1, 4(r8)
+fsubs f11, f11, f1
+lfs f1, 8(r8)
+fsubs f12, f12, f1
 b mtCarryReach
 mtCarryFingers:
 ; r9 = the glove's 3x4 world matrix: its Z column (the fingers, carrying the glove size) at 8/24/40,
@@ -10760,18 +12377,30 @@ mtCarryFingers:
 lfs f0, 76(r11)
 lfs f3, 8(r12)
 fadds f0, f0, f3
+lis r8, mtHandShift@ha
+addi r8, r8, mtHandShift@l
+cmpwi r5, 1
+beq mtCarryFgL
+addi r8, r8, 12
+mtCarryFgL:
 lfs f1, 8(r9)
 lfs f2, 12(r9)
+lfs f3, 0(r8)
+fsubs f2, f2, f3
 fmuls f1, f1, f0
 fadds f1, f1, f2
 stfs f1, 0(r30)
 lfs f1, 24(r9)
 lfs f2, 28(r9)
+lfs f3, 4(r8)
+fsubs f2, f2, f3
 fmuls f1, f1, f0
 fadds f1, f1, f2
 stfs f1, 4(r30)
 lfs f1, 40(r9)
 lfs f2, 44(r9)
+lfs f3, 8(r8)
+fsubs f2, f2, f3
 fmuls f1, f1, f0
 fadds f1, f1, f2
 stfs f1, 8(r30)
@@ -10941,8 +12570,9 @@ mtCarrySizeHi:
 blr
 
 ; mtHeadFwd: (f5, f6) = where the head faces on the ground plane (x, z, length 1), from the two
-; eyes (right eye - left eye turned a quarter to the front); the tracking space's forward when an
-; eye is missing. Uses r0, r8, r10 and f1..f8 only.
+; eyes (the vector between them turned a quarter to the front; the order of the eyes in mtHandCam was
+; found the other way round on 02/10, the result had been pointing backward); the tracking space's
+; forward when an eye is missing. Uses r0, r8, r10 and f1..f8 only.
 mtHeadFwd:
 lis r10, mtHandCam@ha
 addi r10, r10, mtHandCam@l
@@ -10956,11 +12586,11 @@ beq mtHeadFwdDone
 lwz r0, 64(r10)
 cmpwi r0, 0
 beq mtHeadFwdDone
-lfs f7, 56(r10)
-lfs f3, 44(r10)
+lfs f7, 44(r10)
+lfs f3, 56(r10)
 fsubs f7, f7, f3
-lfs f8, 36(r10)
-lfs f3, 48(r10)
+lfs f8, 48(r10)
+lfs f3, 36(r10)
 fsubs f8, f8, f3
 fmuls f3, f7, f7
 fmuls f4, f8, f8
@@ -11439,32 +13069,157 @@ blt mtActLogCopy
 li r0, 0
 stb r0, 0(r11)
 mtActLogPipe:
-; Clear pipes (mtActLog+212 = 1): the player's "RouteDokan..." actions = inside a clear pipe. From
-; the original first person the camera goes behind Mario (the 200 camera, as the camera button
-; would) and comes back to first person with the player's next other action.
+; Camera behind Mario for some actions (the 200 camera, as the camera button would), back to first
+; person with the player's next other action: inside clear pipes (mtActLog+212: "RouteD..."), and
+; in the air (mtActLog+220: actions with "Jump" or "Fall" in the name, or "HipDrop" but not its
+; landing) - to see what you jump on.
+mflr r9
+; Scene changes and transitions (mtTube+168 = 1): while the player's action is a pipe, door, warp,
+; goal, cutscene ("Demo"), death or miss one, the first-person body and gloves are hidden
+; (mtFpBody+0 and mtHandCtl+0 kept in mtTube+152/+156, put back with the next other action)
+li r7, 0
+lis r11, mtTube@ha
+addi r11, r11, mtTube@l
+lwz r0, 168(r11)
+cmpwi r0, 0
+beq mtHideDecide
+mr r5, r4
+lis r6, mtStrDokan@ha
+addi r6, r6, mtStrDokan@l
+bl mtStrHas
+cmpwi r7, 0
+bne mtHideWant
+lis r6, mtStrDemo@ha
+addi r6, r6, mtStrDemo@l
+bl mtStrHas
+cmpwi r7, 0
+bne mtHideWant
+lis r6, mtStrDoor@ha
+addi r6, r6, mtStrDoor@l
+bl mtStrHas
+cmpwi r7, 0
+bne mtHideWant
+lis r6, mtStrGoal@ha
+addi r6, r6, mtStrGoal@l
+bl mtStrHas
+cmpwi r7, 0
+bne mtHideWant
+lis r6, mtStrWarp@ha
+addi r6, r6, mtStrWarp@l
+bl mtStrHas
+cmpwi r7, 0
+bne mtHideWant
+lis r6, mtStrDead@ha
+addi r6, r6, mtStrDead@l
+bl mtStrHas
+cmpwi r7, 0
+bne mtHideWant
+lis r6, mtStrMiss@ha
+addi r6, r6, mtStrMiss@l
+bl mtStrHas
+cmpwi r7, 0
+bne mtHideWant
+b mtHideDecide
+mtHideWant:
+li r7, 1
+mtHideDecide:
+lis r11, mtTube@ha
+addi r11, r11, mtTube@l
+lwz r0, 160(r11)
+cmpwi r7, 0
+beq mtHideOff
+cmpwi r0, 0
+bne mtHideDone
+lis r10, mtFpBody@ha
+addi r10, r10, mtFpBody@l
+lwz r0, 0(r10)
+stw r0, 152(r11)
+li r0, 0
+stw r0, 0(r10)
+lis r10, mtHandCtl@ha
+addi r10, r10, mtHandCtl@l
+lwz r0, 0(r10)
+stw r0, 156(r11)
+li r0, 0
+stw r0, 0(r10)
+li r0, 1
+stw r0, 160(r11)
+b mtHideDone
+mtHideOff:
+cmpwi r0, 0
+beq mtHideDone
+lwz r0, 152(r11)
+lis r10, mtFpBody@ha
+stw r0, mtFpBody@l(r10)
+lwz r0, 156(r11)
+lis r10, mtHandCtl@ha
+stw r0, mtHandCtl@l(r10)
+li r0, 0
+stw r0, 160(r11)
+mtHideDone:
+li r7, 0
 lis r12, mtActLog@ha
 addi r12, r12, mtActLog@l
-lwz r0, 212(r12)
-cmpwi r0, 0
-beq mtActLogR
+lwz r8, 224(r12)
+li r0, 0
+stw r0, 224(r12)
 lbz r0, 0(r4)
 cmpwi r0, 82
-bne mtActLogNoPipe
+bne mtActLogAir
 lbz r0, 1(r4)
 cmpwi r0, 111
-bne mtActLogNoPipe
+bne mtActLogAir
 lbz r0, 2(r4)
 cmpwi r0, 117
-bne mtActLogNoPipe
+bne mtActLogAir
 lbz r0, 3(r4)
 cmpwi r0, 116
-bne mtActLogNoPipe
+bne mtActLogAir
 lbz r0, 4(r4)
 cmpwi r0, 101
-bne mtActLogNoPipe
+bne mtActLogAir
 lbz r0, 5(r4)
 cmpwi r0, 68
-bne mtActLogNoPipe
+bne mtActLogAir
+li r0, 1
+stw r0, 224(r12)
+lwz r0, 212(r12)
+cmpwi r0, 0
+beq mtActLogWant
+li r7, 1
+b mtActLogWant
+mtActLogAir:
+lis r12, mtActLog@ha
+addi r12, r12, mtActLog@l
+lwz r0, 220(r12)
+cmpwi r0, 0
+beq mtActLogWant
+mr r5, r4
+lis r6, mtStrJump@ha
+addi r6, r6, mtStrJump@l
+bl mtStrHas
+cmpwi r7, 0
+bne mtActLogWant
+lis r6, mtStrFall@ha
+addi r6, r6, mtStrFall@l
+bl mtStrHas
+cmpwi r7, 0
+bne mtActLogWant
+lis r6, mtStrHipDrop@ha
+addi r6, r6, mtStrHipDrop@l
+bl mtStrHas
+cmpwi r7, 0
+beq mtActLogWant
+lis r6, mtStrLand@ha
+addi r6, r6, mtStrLand@l
+bl mtStrHas
+xori r7, r7, 1
+mtActLogWant:
+mtlr r9
+lis r12, mtActLog@ha
+addi r12, r12, mtActLog@l
+cmpwi r7, 0
+beq mtActLogNoPipe
 lwz r0, 216(r12)
 cmpwi r0, 0
 bne mtActLogR
@@ -11512,6 +13267,35 @@ mtActLogDone:
 lwz r3, 0x30(r30)
 blr
 0x023F8F68 = bla mtActLogHook
+
+; mtStrHas: r7 = 1 when the zero-ended text at r5 contains the one at r6, else 0. Uses r0, r7, r8,
+; r10, r11, r12.
+mtStrHas:
+li r7, 0
+mr r8, r5
+mtStrHasStart:
+mr r10, r8
+mr r11, r6
+mtStrHasCmp:
+lbz r0, 0(r11)
+cmpwi r0, 0
+beq mtStrHasYes
+lbz r12, 0(r10)
+cmpw r12, r0
+bne mtStrHasNext
+addi r10, r10, 1
+addi r11, r11, 1
+b mtStrHasCmp
+mtStrHasNext:
+lbz r0, 0(r8)
+cmpwi r0, 0
+beq mtStrHasRet
+addi r8, r8, 1
+b mtStrHasStart
+mtStrHasYes:
+li r7, 1
+mtStrHasRet:
+blr
 
 ; Stick snapping. The player's stick filter (0x022B2558, r4 -> the stick x/y) pulls a stick held
 ; nearly straight onto the straight line (0x022B1E20 widens that for X, 0x022B212C the general
@@ -12387,7 +14171,7 @@ mtHideMask:
 mtMenuTable:
 .int 0x4D56524D
 .int 1
-.int 17
+.int 19
 .int mtFpBody
 .int mtEyeFit
 .int mrSnapSin
@@ -12405,6 +14189,8 @@ mtMenuTable:
 .int mtLevel
 .int mtGrab
 .int mtActLog
+.int mtTube
+.int rrCameraOriginal
 ; Player body in the original first person (camera distance 0): each bit draws one shape of the
 ; player's own body model (bit 0 = first shape; Mario has 5, Peach 6), so looking down shows the
 ; body; 0 = hidden as in the original. The eyes, face and other parts stay hidden, the gloves
@@ -12669,7 +14455,9 @@ mtLevel:
 .int 0
 ; mtActLog: 0 player actions counted, 4 the actor of the last, 8.. ring of 8 names (24 bytes each,
 ; copied), 200 the last 'R...' action name (pointer), 204 its actor, 208 their count; 212 switch:
-; 1 = the camera goes behind Mario inside clear pipes; 216 1 = it was put there (runtime)
+; 1 = the camera goes behind Mario inside clear pipes; 216 1 = it was put there (runtime); 220 1 = also
+; while jumping / falling; 224 1 = the player is inside a clear pipe (runtime); 228.. what the game got
+; from the pad (left x, y, right x, y, buttons) and the camera mode / first-person flag (diagnostics)
 mtActLog:
 .int 0
 .int 0
@@ -12725,6 +14513,135 @@ mtActLog:
 .int 0
 .int 0
 .int 1
+.int 0
+.int 1
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+; mtTube: 0 switch (1 = in clear pipes the first-person view turns to the travel direction; off by
+; default, the user did not like it), 4 frame
+; seen, 8 previous player position, 20 travel direction (unit), 32 previous valid, 36 direction valid,
+; 40 easing per frame, 44 the least movement per frame (squared) that turns the view, 48 0.5, 52 the
+; turned camera is in use this frame (runtime), 56 1.5, 60 the least level part (squared) of the
+; direction before the camera's own right is used, 64.. the turned camera (22 words)
+mtTube:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0x3E19999A
+.int 0x3E800000
+.int 0x3F000000
+.int 0
+.int 0x3FC00000
+.int 0x3C23D70A
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0 ; +152 mtFpBody+0 kept while hidden in a clear pipe
+.int 0 ; +156 mtHandCtl+0 kept
+.int 0 ; +160 1 = they are hidden now
+.int 0 ; +164 spare
+.int 1 ; +168 1 = hidden during pipes, doors, warps, goals, cutscenes, deaths
+mtStrDokan:
+.int 0x446F6B61
+.int 0x6E000000
+.int 0x00000000
+mtStrDemo:
+.int 0x44656D6F
+.int 0x00000000
+mtStrDoor:
+.int 0x446F6F72
+.int 0x00000000
+mtStrGoal:
+.int 0x476F616C
+.int 0x00000000
+mtStrWarp:
+.int 0x57617270
+.int 0x00000000
+mtStrDead:
+.int 0x44656164
+.int 0x00000000
+mtStrMiss:
+.int 0x4D697373
+.int 0x00000000
+; mtMapYaw: 0 switch (1 = the world map view turns freely with the right stick), 4 1 = the turned copy is
+; in use (runtime), 8 turn per pad
+; read at full tilt (radians), 12 dead zone, 16/20 cos/sin of the turn (runtime), 24 0.5, 28 1.0,
+; 32 1.5, 36.. the turned camera (22 words)
+mtMapYaw:
+.int 1
+.int 0
+.int 0x3CA3D70A
+.int 0x3E4CCCCD
+.int 0x3F800000
+.int 0
+.int 0x3F000000
+.int 0x3F800000
+.int 0x3FC00000
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+mtStrJump:
+.int 0x4A756D70
+.int 0
+mtStrFall:
+.int 0x46616C6C
+.int 0
+mtStrHipDrop:
+.int 0x48697044
+.int 0x726F7000
+mtStrLand:
+.int 0x4C616E64
 .int 0
 mtRumbleData:
 .int 0
@@ -12963,6 +14880,22 @@ mtArmTmp:
 .int 0x3F800000
 .int 0x3D4CCCCD
 .int 0x40800000
+.int 0x3F800000 ; +172 arm thickness factor of the small characters (1.0 normally; the glove size code sets it)
+.int 0x41600000 ; +176 mtArmEndD: the arm's end goes this many units per 1.0 of extra thickness on into the glove (14; was 20 with a pointed end)
+.int 0x3F800000 ; +180 mtArmTaper: the forearm's thickness relative to the upper arm's (1.0 normally; the glove size code sets it, mtGloveSize+76)
+.int 0 ; +184 mtArmCapHits: how many times an arm hit its stretch cap (+168) and ended short of the glove
+.int 0 ; +188 mtArmStale: arm blocks where the part's copy of the glove position (+0xB4) is more than 0.1 units from mtHandW
+.int 0 ; +192 arm blocks seen
+.int 0x3F800000 ; +196 mtArmLead: on a frame with a game step the arm's glove position is moved on by this many steps of the glove's movement (1.0; 0 = off)
+.int 0x45610000 ; +200 the squared movement (game units) above which the lead is not applied (3600 = 60 units)
+.int 0x40800000 ; +204 mtArmBend: the arm is built toward the point this far (game units) behind the glove's origin along its finger axis; the bend of the wrist takes place over it
+.int 0 ; +208 the glove's place (x), after the lead
+.int 0 ; +212 y
+.int 0 ; +216 z
+.int 0 ; +220 the glove's finger axis (unit; 0 = no bend) x
+.int 0 ; +224 y
+.int 0 ; +228 z
+.int 1 ; +232 1 = the wrist bends with the hand, 0 = the old straight end
 ; mtHeadWrap's work area: 0 the Head bone's 3x3 while zeroed, 36 the world matrix array, 40/44 turned /
 ; head zeroed flags, 48 constants, 64 the saved rows
 mtHeadSave:
@@ -13229,7 +15162,7 @@ mtHandCtl:
 .int 1
 .int 0
 .int 0
-.int 0x41A00000
+.int 0x41200000
 .int 0x3FC00000
 .int 0x471C4000
 .int 0x3F333333
@@ -13239,6 +15172,103 @@ mtHandCtl:
 .int 2 ; @HP_PR
 .int 0x41500000
 .int 20
+; mtGloveSize: glove size and arm thickness of the characters with small hands, floats. The hand models differ a lot
+; (measured from the game files, mean diagonal of the 7 poses: Mario 50.0, small Mario 45.0, Peach 25.5, Rosalina 24.4,
+; Toad 23.4, small Peach 19.6, small Rosalina 18.3, small Toad 17.3), but mtHandCtl+56 / +60 only know two classes and
+; Toad shared Mario's, so his gloves were drawn at about half of Mario's size. The glove model is told by its vertex total
+; (Peach 2563/2586, small Peach 3032/3101, Rosalina 2538/2496, small Rosalina 2523/2431, Toad and small Toad 3381/3462; the
+; cat claws, Mario and small Mario, Toad's raccoon hands have 4800 and more and keep the old sizes), grown-up or small form
+; by the upper-arm length the arm code measures (mtArmTmp+120: Peach and Rosalina 25.5, their small forms 14.0, Toad 9.4,
+; small Toad 5.6). The size is also multiplied by the menu's glove size (mtHandCtl+56 / 0.7).
+; Sizes (the first try, Toad 1.5 = Mario's absolute size, was "gigante" in the headset): +0 Peach/Rosalina (0.95), +4 their
+; small forms (1.3), +16 Toad (1.2), +24 small Toad (1.6). Thresholds on the upper-arm length: +8 below it the arm has not
+; been measured yet (4.0), +12 above it Peach/Rosalina are grown-up (20.0), +20 above it Toad is grown-up (8.0).
+; +28 1.0, +32 1/0.7. Arm thickness (the arm's cross-section is multiplied by it, mtArmTmp+172): +36 Peach/Rosalina (1.2),
+; +40 their small forms (1.3), +44 Toad (1.35), +48 small Toad (1.55). The thickness follows the glove's wrist: Mario's sleeve (radius 8.2)
+; is 1.4 times his glove's cuff (5.9), and the same ratio is kept for the others.
+mtGloveSize:
+.int 0x3F733333
+.int 0x3FA66666
+.int 0x40800000
+.int 0x41A00000
+.int 0x3F99999A
+.int 0x41000000
+.int 0x3FCCCCCD
+.int 0x3F800000
+.int 0x3FB6DB6E
+.int 0x3F99999A
+.int 0x3FA66666
+.int 0x3FACCCCD
+.int 0x3FC66666
+.int 0x41566666
+.int 0x41300000
+.int 0x40F00000
+.int 0x41166666
+.int 0x40D33333
+.int 0x3F800000
+.int 0x3F4CCCCD
+.int 0x41600000
+.int 0
+; +76 the forearm's thickness relative to the upper arm's for Toad (0.8; the other characters 1.0); +80 / +84 how far the arm's end
+.int 0x40800000
+.int 0x41000000
+.int 0x41500000
+.int 0x40B00000
+.int 0x3F8CCCCD
+; +104 the default arm thickness per unit of glove size (mtGlvThick: 1.1, the Galaxy rule: thickness = glove scale x 1.1, at most 1.0)
+; +88..+100 the most the arm is stretched toward the glove, times its own length (mtArmCap): 4.0 normally, +92 Toad 8.0, +96 small Toad 13.0,
+; +100 small Peach / Rosalina 5.5 (their arm chains are short; the reach stays about 1 m)
+; goes into the glove per 1.0 of extra thickness (mtArmFlush: 14.0 normally, 0.0 for the Toad family: the end is flush with the wrist)
+; +52..+68 where the middle of the glove lies along its fingers, in glove units, measured from the glove models (vertex centroid, mean
+; of the 7 poses): +52 Mario, Luigi, the cat claws and everything else (13.4), +56 Peach and Rosalina (11.0), +60 their small forms (7.5),
+; +64 Toad (9.4), +68 small Toad (6.6); +72 how much of that the glove is moved back (1.0 = the middle of the hand on the controller's point).
+; mtHandShift: per hand (left 0..11, right 12..23) the world vector the wrist was moved by; the carried object takes it back off the wrist.
+mtHandShift:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+; mtGlDbg: +0 / +12 the previous step's glove position (left / right), +24 / +28 skeleton roots seen at this step's left glove / the previous step's,
+; +32 / +36 the same for the right glove, +40 skeleton steps seen, +44 diagnostic on (1), +48 the squared distance (game units) that counts as a
+; match, +52 / +56 times the left / right glove skeleton was drawn with mtHandW (mtGlFix), +60 mtGlFix on (1)
+mtGlDbg:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 1
+.int 0x3C23D70A
+.int 0
+.int 0
+.int 1
+; mtGlRing: +64 the next index, +68.. the last 64 events (bytes): 0x10+h glove h updated, 0x20+h arm block h ran, 0x30+h a skeleton root at glove h
+mtGlRing:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
 ; mtHandCam: 0 the 3x3 turning tracking space into the game world, 36 and 48 each
 ; eye's world position, 60 and 64 their valid flags, 68 a 3x3 scratch (32 words).
 mtHandCam:
@@ -13723,6 +15753,7 @@ mtMotionData:
 .int 0x3F000000
 .int 0xBF000000
 .int 0x00000000
+.int 0xC3960000 ; +20 the left hand at most 300 units (20 cm) below the head for the D-pad gesture
 
 ; Depth of field off: take the branch the game takes when its own switch is
 ; clear, so the pass is never entered and r8 keeps the previous target.
@@ -13738,3 +15769,138 @@ mtMotionData:
 ; nothing to do, so the effect is never entered and r30 keeps the target.
 0x022D8690 = mtGodRaySkip:
 0x022D85CC = b mtGodRaySkip
+
+; pfPipe: block mrCull rescues while drawing the Cat Mario bonus room actor (EnterCatMarioBonusRoom),
+; which carries a large Black01 enclosure that appears as a black polygon in VR when the room is
+; rescued into the frustum. pfPipeState[0]=current block, [4]=found count, [8]=blocked rescue count.
+pfPipeState:
+.int 0
+.int 0
+.int 0
+
+; Hook the game's pfParticleFill function at four call sites. Before each call, check if the
+; actor being processed is EnterCatMarioBonusRoom; if so, set pfPipeState=1 so mrCullTryEyes
+; skips any rescue attempts that would pull in the black enclosure geometry.
+0x0254DF08 = pfPipeNative:
+0x02558F78 = bla pfPipeActorHook
+0x02548B3C = bla pfPipeActorHook
+0x0255C220 = bla pfPipeActorHook
+0x0255C2F8 = bla pfPipeActorHook
+
+pfPipeActorHook:
+stwu r1, -0x20(r1)
+mflr r0
+stw r0, 0x24(r1)
+lis r12, pfPipeState@ha
+addi r12, r12, pfPipeState@l
+lwz r0, 0(r12)
+stw r0, 8(r1)          ; save current pfPipeState on stack (callers can nest)
+li r0, 0
+stw r0, 0(r12)          ; default: no block
+lis r10, mrSceneClass@ha
+lwz r10, mrSceneClass@l(r10)
+lis r11, 0x1032
+ori r11, r11, 0x86DC
+cmpw r10, r11           ; only the bonus-room scene class carries this actor
+bne pfPipeActorCall
+lwz r9, 0(r3)
+cmpwi r9, 0
+beq pfPipeActorCall
+lwz r11, 0(r9)
+lis r0, 0x1037
+ori r0, r0, 0x6518
+cmpw r11, r0            ; verify actor class vtable
+bne pfPipeActorCall
+lwz r9, 0x44(r9)        ; model at vtable+0x44
+cmpwi r9, 0
+beq pfPipeActorCall
+lwz r9, 4(r9)           ; resource name at model[4]
+cmpwi r9, 0
+beq pfPipeActorCall
+lbz r0, 0(r9)
+cmpwi r0, 69            ; 'E'
+bne pfPipeActorCall
+lbz r0, 1(r9)
+cmpwi r0, 110           ; 'n'
+bne pfPipeActorCall
+lbz r0, 2(r9)
+cmpwi r0, 116           ; 't'
+bne pfPipeActorCall
+lbz r0, 3(r9)
+cmpwi r0, 101           ; 'e'
+bne pfPipeActorCall
+lbz r0, 4(r9)
+cmpwi r0, 114           ; 'r'
+bne pfPipeActorCall
+lbz r0, 5(r9)
+cmpwi r0, 67            ; 'C'
+bne pfPipeActorCall
+lbz r0, 6(r9)
+cmpwi r0, 97            ; 'a'
+bne pfPipeActorCall
+lbz r0, 7(r9)
+cmpwi r0, 116           ; 't'
+bne pfPipeActorCall
+lbz r0, 8(r9)
+cmpwi r0, 77            ; 'M'
+bne pfPipeActorCall
+lbz r0, 9(r9)
+cmpwi r0, 97            ; 'a'
+bne pfPipeActorCall
+lbz r0, 10(r9)
+cmpwi r0, 114           ; 'r'
+bne pfPipeActorCall
+lbz r0, 11(r9)
+cmpwi r0, 105           ; 'i'
+bne pfPipeActorCall
+lbz r0, 12(r9)
+cmpwi r0, 111           ; 'o'
+bne pfPipeActorCall
+lbz r0, 13(r9)
+cmpwi r0, 66            ; 'B'
+bne pfPipeActorCall
+lbz r0, 14(r9)
+cmpwi r0, 111           ; 'o'
+bne pfPipeActorCall
+lbz r0, 15(r9)
+cmpwi r0, 110           ; 'n'
+bne pfPipeActorCall
+lbz r0, 16(r9)
+cmpwi r0, 117           ; 'u'
+bne pfPipeActorCall
+lbz r0, 17(r9)
+cmpwi r0, 115           ; 's'
+bne pfPipeActorCall
+lbz r0, 18(r9)
+cmpwi r0, 82            ; 'R'
+bne pfPipeActorCall
+lbz r0, 19(r9)
+cmpwi r0, 111           ; 'o'
+bne pfPipeActorCall
+lbz r0, 20(r9)
+cmpwi r0, 111           ; 'o'
+bne pfPipeActorCall
+lbz r0, 21(r9)
+cmpwi r0, 109           ; 'm'
+bne pfPipeActorCall
+lbz r0, 22(r9)
+cmpwi r0, 0             ; '\0'
+bne pfPipeActorCall
+; Found EnterCatMarioBonusRoom: block mrCull rescues for this draw.
+lis r12, pfPipeState@ha
+addi r12, r12, pfPipeState@l
+li r0, 1
+stw r0, 0(r12)          ; pfPipeState = 1
+lwz r11, 4(r12)
+addi r11, r11, 1
+stw r11, 4(r12)         ; found count++
+pfPipeActorCall:
+bl pfPipeNative
+lis r12, pfPipeState@ha
+addi r12, r12, pfPipeState@l
+lwz r0, 8(r1)
+stw r0, 0(r12)          ; restore pfPipeState
+lwz r0, 0x24(r1)
+mtlr r0
+addi r1, r1, 0x20
+blr

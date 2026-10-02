@@ -101,6 +101,12 @@ números e interruptores exatos, em [INSTALL.md](INSTALL.md); resumo:
 - **Correção de passos perdidos:** o pacote de FPS descartava tempo sobrando quando os quadros
   eram desiguais, deixando o jogo em câmera lenta a ~70 quadros por segundo; agora aproveita
   esse tempo sobrando no quadro seguinte.
+- **Luvas e braços de cada personagem:** luvas no tamanho certo para Toad, Peach e Rosalina, braço
+  ligado à luva (também nos pulos) e o punho que dobra junto com a mão.
+- **Menu:** novo item "Luvas: frente / trás da esfera" e o botão B volta no menu de escolha de
+  personagem.
+- **Correções:** o casco é arremessado para onde você mira e as silhuetas pretas ao trocar de
+  mapa foram corrigidas.
 
 Veja as [notas de lançamento](RELEASE_NOTES.md) para o histórico da base VR e
 [INSTALL.md](INSTALL.md) para os controles e todos os interruptores das modificações

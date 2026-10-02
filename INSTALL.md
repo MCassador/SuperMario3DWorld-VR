@@ -174,8 +174,10 @@ modificações feitas por **MCassador**:
   `0` para desligar os dois acordes.
 - Luvas, deslocamento para a frente: a palavra no offset 44 de `mtHandCtl` é um float, o
   quanto as luvas ficam à frente na direção que o controle aponta, em unidades de jogo
-  (cerca de 150 unidades são 1 m, então o padrão 20, `0x41A00000`, é cerca de 13 cm).
-  `0x41F00000` = 30, `0x41700000` = 15, `0x41200000` = 10 (o padrão anterior), 0 = nenhum.
+  (cerca de 150 unidades são 1 m). A medida parte do centro da luva: 0 = o centro da luva em
+  cima da esfera do controle, positivo = à frente, negativo = atrás. O padrão agora é 10
+  (`0x41200000`, cerca de 7 cm); `0x41A00000` = 20 era o padrão anterior. No menu da VR (aba Corpo)
+  o item "Luvas: frente / trás da esfera" ajusta isso de -27 a +27 cm.
 - Luvas, predição: uma luva é desenhada a partir de uma amostra do controle já um pouco
   velha, então ela fica atrasada numa mão rápida. A palavra no offset 48 de `mtHandCtl`
   (float, padrão 1,5 = `0x3FC00000`) move a mão à frente por essa quantidade de quadros do
