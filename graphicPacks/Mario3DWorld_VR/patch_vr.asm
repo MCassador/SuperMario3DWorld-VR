@@ -438,6 +438,8 @@ stw r7, rrDioramaAdvance@l(r11)
 lis r12, mrSceneClass@ha
 li r11, 0
 stw r11, mrSceneClass@l(r12)
+lis r12, tsScene@ha
+stw r11, tsScene@l(r12)
 lis r9, rrSlot@ha
 addi r9, r9, rrSlot@l
 lwz r10, 0(r9)
@@ -731,6 +733,104 @@ rrCameraFactorRight:
 rrCameraMinusOne:
 .int 0xBF800000
 rrCameraHook:
+lis r9, tsStats@ha
+addi r9, r9, tsStats@l
+lwz r11, 0(r9)
+addi r11, r11, 1
+stw r11, 0(r9)
+lis r9, tsScene@ha
+lwz r9, tsScene@l(r9)
+lis r12, 0x1000
+cmplw r9, r12
+blt tsCameraContinue
+lis r12, 0x5000
+cmplw r9, r12
+bge tsCameraContinue
+andi. r12, r9, 3
+bne tsCameraContinue
+lwz r11, 0(r9)
+lis r12, tsStats@ha
+addi r12, r12, tsStats@l
+stw r11, 8(r12)
+lis r12, 0x1032
+ori r12, r12, 0x8FEC
+cmpw r11, r12
+bne tsCameraContinue
+; Native state getter 022E3F28 -> scene+4. Native query 02440DD0
+; prefers pending state (+8) to current (+4), catching A before iris starts.
+lwz r11, 4(r9)
+lis r12, 0x1000
+cmplw r11, r12
+blt tsCheckWipe
+lis r12, 0x5000
+cmplw r11, r12
+bge tsCheckWipe
+andi. r12, r11, 3
+bne tsCheckWipe
+lwz r12, 8(r11)
+cmpwi r12, 0
+bne tsStateReady
+lwz r12, 4(r11)
+tsStateReady:
+lis r11, tsStats@ha
+addi r11, r11, tsStats@l
+stw r12, 12(r11)
+lis r11, 0x104E
+ori r11, r11, 0x6228
+cmpw r12, r11
+beq tsUseSurface
+lis r11, 0x104E
+ori r11, r11, 0x622C
+cmpw r12, r11
+beq tsUseSurface
+lis r11, 0x104E
+ori r11, r11, 0x6230
+cmpw r12, r11
+beq tsUseSurface
+lis r11, 0x104E
+ori r11, r11, 0x6234
+cmpw r12, r11
+beq tsUseSurface
+lis r11, 0x104E
+ori r11, r11, 0x6238
+cmpw r12, r11
+beq tsUseSurface
+lis r11, 0x104E
+ori r11, r11, 0x623C
+cmpw r12, r11
+beq tsUseSurface
+lis r11, 0x104E
+ori r11, r11, 0x6244
+cmpw r12, r11
+beq tsUseSurface
+tsCheckWipe:
+; Exact TitleScene WipeCircle owner (constructor 022E2898/28A0).
+; Native title code itself checks actor+4C at 022E35B8 and 022E3C0C.
+lwz r11, 0xA4(r9)
+lis r12, 0x1000
+cmplw r11, r12
+blt tsCameraContinue
+lis r12, 0x5000
+cmplw r11, r12
+bge tsCameraContinue
+andi. r12, r11, 3
+bne tsCameraContinue
+lwz r9, 0(r11)
+lis r12, 0x1037
+ori r12, r12, 0x3F14
+cmpw r9, r12
+bne tsCameraContinue
+lbz r11, 0x4C(r11)
+cmpwi r11, 0
+beq tsCameraContinue
+tsUseSurface:
+lis r9, tsStats@ha
+addi r9, r9, tsStats@l
+lwz r11, 4(r9)
+addi r11, r11, 1
+stw r11, 4(r9)
+b rrCameraExit
+tsCameraContinue:
 ; The original epilogue restored LR and SP. Only ABI-volatile registers follow.
 cmpwi r3, 0
 beq rrCameraExit
@@ -1009,8 +1109,65 @@ lis r7, mrEyeTarget@ha
 addi r7, r7, mrEyeTarget@l
 lfs f0, 1976(r11)
 stfs f0, 0(r7)
-lfs f0, 1980(r11)
+; the eye height: the standing one (mrEyeTarget+12), or inside a clear pipe the pipe's (mtPipeEye+4); the height in use (mtPipeEye+8) eases toward it by mtPipeEye+12 per step
 lfs f1, 12(r7)
+lis r7, mtPipeEye@ha
+addi r7, r7, mtPipeEye@l
+lwz r0, 0(r7)
+cmpwi r0, 0
+beq mtPipeEyeStand
+lwz r0, 4(r7)
+cmpwi r0, 0
+ble mtPipeEyeStand
+lfs f1, 4(r7)
+mtPipeEyeStand:
+lwz r0, 16(r7)
+cmpwi r0, 0
+beq mtPipeEyeLow
+lwz r0, 0(r7)
+cmpwi r0, 0
+bne mtPipeEyeLow
+lfs f2, 20(r7)
+fadds f1, f1, f2
+mtPipeEyeLow:
+; the Bill Box suit worn (mtPipeEye+24 counts down once per step, set to 3 by mtHideBox): the eyes move by mtPipeEye+28
+; (no addi r0, r0, n here: with rA = r0 that is li r0, n)
+lwz r0, 24(r7)
+cmpwi r0, 0
+ble mtPipeEyeBoxNo
+cmpwi r0, 3
+bge mtPipeEyeBox3
+cmpwi r0, 2
+bge mtPipeEyeBox2
+li r0, 0
+b mtPipeEyeBoxSt
+mtPipeEyeBox2:
+li r0, 1
+b mtPipeEyeBoxSt
+mtPipeEyeBox3:
+li r0, 2
+mtPipeEyeBoxSt:
+stw r0, 24(r7)
+lfs f2, 28(r7)
+fadds f1, f1, f2
+mtPipeEyeBoxNo:
+; mtPipeEye+36: the snap-turn mask shifts right one bit per step (0x1F -> 0 in 5 steps)
+lwz r0, 36(r7)
+srwi r0, r0, 1
+stw r0, 36(r7)
+lwz r0, 8(r7)
+cmpwi r0, 0
+beq mtPipeEyeStore
+lfs f2, 8(r7)
+fsubs f0, f1, f2
+lfs f1, 12(r7)
+fmuls f0, f0, f1
+fadds f1, f2, f0
+mtPipeEyeStore:
+stfs f1, 8(r7)
+lis r7, mrEyeTarget@ha
+addi r7, r7, mrEyeTarget@l
+lfs f0, 1980(r11)
 fadds f0, f0, f1
 stfs f0, 4(r7)
 lfs f0, 1984(r11)
@@ -3060,6 +3217,14 @@ lis r12, mrSceneClass@ha
 addi r12, r12, mrSceneClass@l
 li r11, 0
 stw r11, 0(r12)
+lis r12, tsScene@ha
+stw r11, tsScene@l(r12)
+lis r12, pfState@ha
+addi r12, r12, pfState@l
+stw r11, 8(r12)
+stw r11, 24(r12)
+lis r12, mrSceneClass@ha
+addi r12, r12, mrSceneClass@l
 cmpwi r3, 0
 beq mrSceneDone
 lwz r11, 8(r3)
@@ -3080,6 +3245,44 @@ blt mrSceneDone
 lis r0, 0x5000
 cmplw r11, r0
 bge mrSceneDone
+lis r12, pfState@ha
+addi r12, r12, pfState@l
+li r0, 0
+stw r0, 8(r12)
+stw r11, 20(r12)
+lwz r0, 0(r11)
+lis r12, 0x1027
+ori r12, r12, 0xF388
+cmpw r0, r12
+bne pfStateDone
+lwz r0, 0x104(r11)
+lis r12, pfState@ha
+addi r12, r12, pfState@l
+stw r0, 12(r12)
+cmpwi r0, 9
+blt pfStateDone
+cmpwi r0, 12
+bgt pfStateDone
+cmpwi r0, 9
+beq pfStateLower
+cmpwi r0, 12
+beq pfStateUpper
+li r0, 2
+b pfStateStore
+pfStateLower:
+li r0, 1
+b pfStateStore
+pfStateUpper:
+li r0, 3
+pfStateStore:
+stw r0, 8(r12)
+pfStateDone:
+lis r12, mrSceneClass@ha
+addi r12, r12, mrSceneClass@l
+lis r12, tsScene@ha
+stw r11, tsScene@l(r12)
+lis r12, mrSceneClass@ha
+addi r12, r12, mrSceneClass@l
 lwz r11, 0(r11)
 stw r11, 0(r12)
 mrSceneDone:
@@ -3390,6 +3593,12 @@ stw r11, 4(r12)
 ; anything else reads it. Nothing here depends on Cemu's input configuration.
 lis r9, mtPad@ha
 addi r9, r9, mtPad@l
+; B runs only: forget which sources pressed X on the last read (mtRunB: +12 B does, +16 something else does)
+lis r12, mtRunB@ha
+addi r12, r12, mtRunB@l
+li r0, 0
+stw r0, 12(r12)
+stw r0, 16(r12)
 lwz r11, 0(r9)
 cmpwi r11, 0
 beq mtMotionDone
@@ -3410,6 +3619,10 @@ ori r5, r5, 8192
 lis r12, 65535
 ori r12, r12, 57343
 and r6, r6, r12
+lis r12, mtRunB@ha
+addi r12, r12, mtRunB@l
+li r0, 1
+stw r0, 16(r12)
 mtMotionLeftDoneBit0:
 li r12, 2
 and r12, r11, r12
@@ -3492,6 +3705,10 @@ ori r5, r5, 8192
 lis r12, 65535
 ori r12, r12, 57343
 and r6, r6, r12
+lis r12, mtRunB@ha
+addi r12, r12, mtRunB@l
+li r0, 1
+stw r0, 12(r12)
 mtMotionRightDoneBit1:
 ; the right trigger runs: held, it holds the game's X (run / pick up / fireball)
 li r12, 16
@@ -3502,6 +3719,10 @@ ori r5, r5, 8192
 lis r12, 65535
 ori r12, r12, 57343
 and r6, r6, r12
+lis r12, mtRunB@ha
+addi r12, r12, mtRunB@l
+li r0, 1
+stw r0, 16(r12)
 mtMotionRightDoneBit2:
 li r12, 32
 and r12, r11, r12
@@ -3751,11 +3972,20 @@ lwz r12, 8(r11)
 stw r12, 16(r11)
 lwz r12, 12(r11)
 stw r12, 20(r11)
+; the first read of the attack gesture: an X press even if B already holds X
+lis r12, mtRunB@ha
+addi r12, r12, mtRunB@l
+li r0, 1
+stw r0, 8(r12)
 mtSwingPress:
 ori r5, r5, 8192
 lis r12, 65535
 ori r12, r12, 57343
 and r6, r6, r12
+lis r12, mtRunB@ha
+addi r12, r12, mtRunB@l
+li r0, 1
+stw r0, 16(r12)
 mtSwingDone:
 ; the same attack gesture with the left controller (mtSwingL: its own switch, thresholds and state)
 lis r11, mtSwingL@ha
@@ -3895,11 +4125,19 @@ lwz r12, 8(r11)
 stw r12, 16(r11)
 lwz r12, 12(r11)
 stw r12, 20(r11)
+lis r12, mtRunB@ha
+addi r12, r12, mtRunB@l
+li r0, 1
+stw r0, 8(r12)
 mtSwingPressL:
 ori r5, r5, 8192
 lis r12, 65535
 ori r12, r12, 57343
 and r6, r6, r12
+lis r12, mtRunB@ha
+addi r12, r12, mtRunB@l
+li r0, 1
+stw r0, 16(r12)
 mtSwingDoneL:
 ; the frame in which X went down (kept in mtFireStat for the fireball summary)
 lis r11, mtFireStat@ha
@@ -4014,6 +4252,21 @@ mtMotionKeepRight:
 addi r11, r11, 0xAC
 b mtMotionNext
 mtMotionDone:
+; B runs only: X is held by B alone when no other source (trigger, left X, the attack gesture) holds it
+lis r12, mtRunB@ha
+addi r12, r12, mtRunB@l
+lwz r0, 12(r12)
+cmpwi r0, 0
+beq mtRunBNone
+lwz r0, 16(r12)
+cmpwi r0, 0
+bne mtRunBNone
+lwz r0, 0(r12)
+b mtRunBStore
+mtRunBNone:
+li r0, 0
+mtRunBStore:
+stw r0, 4(r12)
 lis r8, mtControl@ha
 addi r8, r8, mtControl@l
 lwz r7, 0(r4)
@@ -4332,6 +4585,11 @@ fmuls f10, f4, f3
 fadds f9, f9, f10
 stfs f7, 0(r8)
 stfs f9, 4(r8)
+; a snap turn: for a few steps the player's own shapes are not drawn (arm and glove would show at different places, mtPipeEye+36)
+lis r7, mtPipeEye@ha
+addi r7, r7, mtPipeEye@l
+li r9, 0x3F
+stw r9, 36(r7)
 b mrLookNoTurn
 mrLookNoReset:
 lfs f0, 16(r8)
@@ -4478,6 +4736,7 @@ mtlr r0
 addi r1, r1, 0x30
 blr
 0x0236CA4C = bla mrLookInput
+0x0236AC84 = bla mtRunGate
 
 rrProjectionHeader:
 .int 0x4354504A
@@ -7219,6 +7478,46 @@ stw r0, 12(r1)
 stw r7, 16(r1)
 stw r8, 20(r1)
 stw r12, 24(r1)
+; a snap turn of the view has just happened (mtPipeEye+36 not 0): the arm is built one step late and points at the glove's old place for a moment (or the game's own arm shows), so none
+; of the player's own shapes (body, arms, gloves: the captured models of mtHideModel) is drawn - checked before every other rule here, so it holds whatever they would say
+lis r7, mtPipeEye@ha
+addi r7, r7, mtPipeEye@l
+lwz r0, 36(r7)
+cmpwi r0, 0
+beq mtSnapEarlyNo
+lis r8, mtHideModel@ha
+addi r8, r8, mtHideModel@l
+lwz r12, 16(r8)
+cmpwi r12, 0
+ble mtSnapEarlyNo
+cmplwi r12, 17
+bgt mtSnapEarlyNo
+addi r7, r8, 20
+mtSnapEarlyLoop:
+lwz r0, 0(r7)
+cmpw r3, r0
+beq mtHideDo
+addi r7, r7, 4
+addi r12, r12, -1
+cmpwi r12, 0
+bgt mtSnapEarlyLoop
+mtSnapEarlyNo:
+mflr r7
+stw r7, 28(r1)
+bl pfGate
+lwz r7, 28(r1)
+mtlr r7
+cmpwi r3, 0
+bne pfGatePassed
+lwz r7, 16(r1)
+lwz r8, 20(r1)
+lwz r12, 24(r1)
+lwz r0, 12(r1)
+.int 0x7C0FF120 ; mtcrf 255,r0
+lwz r0, 8(r1)
+addi r1, r1, 0x20
+blr
+pfGatePassed:
 lis r7, mtControl@ha
 addi r7, r7, mtControl@l
 lwz r0, 0(r7)
@@ -7261,7 +7560,7 @@ addi r7, r7, 4
 addi r12, r12, -1
 cmpwi r12, 0
 bgt mtHideCompare
-b mtHidePass
+b mtHideBox
 mtHideMatched:
 ; Camera distance 0 is the original first person: the parts stay hidden, and the body model's
 ; shapes set in mtFpBody are drawn while the view is pulled back no more than mtFpBody+4.
@@ -7269,6 +7568,12 @@ lis r7, mtEyeBack@ha
 lwz r7, mtEyeBack@l(r7)
 cmpwi r7, 0
 bne mtHideMaskIndex
+; the Bill Box suit is worn (mtPipeEye+24): none of the player's own shapes is drawn (no body, arms or gloves)
+lis r7, mtPipeEye@ha
+addi r7, r7, mtPipeEye@l
+lwz r0, 24(r7)
+cmpwi r0, 0
+bgt mtHideDo
 lwz r0, 20(r8)
 cmpw r3, r0
 bne mtHidePart
@@ -7448,6 +7753,129 @@ lwz r0, 8(r1)
 addi r1, r1, 0x20
 lwz r11, 0(r3)
 b mtHideNativeResume
+; The Bill Box suit ("BoxKiller") the player wears, found by its position around the eye; only in the original first person (mtEyeBack 0).
+; It is drawn as always; mtPipeEye+24 = 3 tells the eye code and the player-shape code that the suit is on (mtBoxHide: +0 on, +4 the horizontal distance (90),
+; +8/+12 the box origin's height relative to the eye (-260 / 40), +16 the suit's skeleton while it is worn).
+mtHideBox:
+lis r12, mtEyeBack@ha
+lwz r12, mtEyeBack@l(r12)
+cmpwi r12, 0
+bne mtHidePass
+lwz r7, 36(r3)
+lis r12, 0x1000
+cmplw r7, r12
+blt mtHidePass
+lis r12, 0x5000
+cmplw r7, r12
+bge mtHidePass
+lwz r8, 4(r7)
+add r7, r7, r8
+addi r7, r7, 4
+lis r12, 0x1000
+cmplw r7, r12
+blt mtHidePass
+lis r12, 0x5000
+cmplw r7, r12
+bge mtHidePass
+lbz r0, 0(r7)
+cmpwi r0, 66
+bne mtHidePass
+lbz r0, 1(r7)
+cmpwi r0, 111
+bne mtHidePass
+lbz r0, 2(r7)
+cmpwi r0, 120
+bne mtHidePass
+lbz r0, 3(r7)
+cmpwi r0, 75
+bne mtHidePass
+lbz r0, 4(r7)
+cmpwi r0, 105
+bne mtHidePass
+lbz r0, 5(r7)
+cmpwi r0, 108
+bne mtHidePass
+lbz r0, 6(r7)
+cmpwi r0, 108
+bne mtHidePass
+lbz r0, 7(r7)
+cmpwi r0, 101
+bne mtHidePass
+lbz r0, 8(r7)
+cmpwi r0, 114
+bne mtHidePass
+lbz r0, 9(r7)
+cmpwi r0, 0
+bne mtHidePass
+lis r12, mtBoxHide@ha
+addi r12, r12, mtBoxHide@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq mtHidePass
+stwu r1, -0x20(r1)
+stfd f8, 8(r1)
+stfd f9, 16(r1)
+stfd f10, 24(r1)
+lis r7, mrEyeTarget@ha
+addi r7, r7, mrEyeTarget@l
+lfs f8, 0x90(r3)
+lfs f9, 0(r7)
+fsubs f8, f8, f9
+.int 0xFD004210 ; fabs f8, f8
+lfs f10, 4(r12)
+.int 0xFC085000 ; fcmpu cr0, f8, f10
+bge mtBoxSFarP
+lfs f8, 0xB0(r3)
+lfs f9, 8(r7)
+fsubs f8, f8, f9
+.int 0xFD004210 ; fabs f8, f8
+.int 0xFC085000 ; fcmpu cr0, f8, f10
+bge mtBoxSFarP
+lfs f8, 0xA0(r3)
+lfs f9, 4(r7)
+fsubs f8, f8, f9
+lfs f10, 8(r12)
+.int 0xFC085000 ; fcmpu cr0, f8, f10
+blt mtBoxSFarP
+lfs f10, 12(r12)
+.int 0xFC085000 ; fcmpu cr0, f8, f10
+bgt mtBoxSFarP
+lfd f8, 8(r1)
+lfd f9, 16(r1)
+lfd f10, 24(r1)
+addi r1, r1, 0x20
+b mtBoxSNear
+mtBoxSFarP:
+lfd f8, 8(r1)
+lfd f9, 16(r1)
+lfd f10, 24(r1)
+addi r1, r1, 0x20
+b mtBoxSFar
+mtBoxSNear:
+lis r12, mtBoxHide@ha
+addi r12, r12, mtBoxHide@l
+lis r8, mtPipeEye@ha
+addi r8, r8, mtPipeEye@l
+li r0, 3
+stw r0, 24(r8)
+; the suit's skeleton ([[model]+24], as for the player's parts), for the skinning step (mtPartTry)
+lwz r8, 0(r3)
+lis r0, 0x1000
+cmplw r8, r0
+blt mtBoxSFar
+lis r0, 0x5000
+cmplw r8, r0
+bge mtBoxSFar
+lwz r8, 24(r8)
+stw r8, 16(r12)
+mtBoxSFar:
+b mtHidePass
+mtBoxHide:
+.int 1
+.int 0x42B40000 ; 90.0
+.int 0xC3820000 ; -260.0
+.int 0x42200000 ; 40.0
+.int 0 ; +16 the suit's skeleton while it is worn
 0x024E7758 = ba mtHideShape
 
 ; First person body: the skeleton's skinning-matrix step (0x023DAD0C, r3 = skeleton, r4 = buffer
@@ -7783,11 +8211,7 @@ bne mtHeadOrig
 lis r9, mtEyeFit@ha
 addi r9, r9, mtEyeFit@l
 ; (off: Mario's 145, mtEyeFit+24); the menu's fine adjustment (+20) is added either way
-lwz r0, 16(r9)
-cmpwi r0, 0
-bne mtEyeFitNeck
-lfs f1, 24(r9)
-b mtEyeFitAdd
+; both modes follow the neck (the cat suit's bent pose, the Mega Mushroom's scale); +16 only decides whether the cap below applies
 mtEyeFitNeck:
 lfs f1, 652(r10)
 lfs f2, 28(r10)
@@ -7841,6 +8265,18 @@ stfs f1, 28(r9)
 lfs f2, 0(r9)
 fmuls f1, f1, f2
 fmuls f1, f1, f8
+; "Sempre a do Mario" (+16 = 0): a tall character sees from Mario's height at most (mtEyeFit+24 + the margin at +72, times the model's scale f8)
+lwz r0, 16(r9)
+cmpwi r0, 0
+bne mtEyeCapDone
+lfs f2, 24(r9)
+lfs f3, 72(r9)
+fadds f2, f2, f3
+fmuls f2, f2, f8
+.int 0xFC011000 ; fcmpu cr0, f1, f2
+ble mtEyeCapDone
+fmr f1, f2
+mtEyeCapDone:
 mtEyeFitAdd:
 ; two height profiles: a small character (eye height below mtEyeFit+60: small Mario...) gets the
 ; adjustment at +64, a big one the one at +20
@@ -7896,6 +8332,27 @@ lfs f1, 8(r7)
 fneg f1, f1
 lfs f2, 32(r7)
 fneg f2, f2
+; mtPipeEye+32: the heading of the body in the tracking space (mtBodyFollow, written by the layer) taken into the world by the 3x3 at r7 instead of the tracking forward
+lis r8, mtPipeEye@ha
+addi r8, r8, mtPipeEye@l
+lwz r0, 32(r8)
+cmpwi r0, 0
+beq mtBFWorldDone
+lis r8, mtBodyFollow@ha
+addi r8, r8, mtBodyFollow@l
+lfs f3, 0(r8)
+lfs f4, 4(r8)
+lfs f5, 0(r7)
+fmuls f5, f5, f3
+lfs f6, 8(r7)
+fmuls f6, f6, f4
+fadds f1, f5, f6
+lfs f5, 24(r7)
+fmuls f5, f5, f3
+lfs f6, 32(r7)
+fmuls f6, f6, f4
+fadds f2, f5, f6
+mtBFWorldDone:
 lfs f3, 8(r10)
 lfs f4, 40(r10)
 fmuls f5, f3, f1
@@ -8648,6 +9105,66 @@ addi r9, r9, 1
 stw r9, 184(r8)
 mtArmKL:
 stfs f1, 136(r8)
+; mtArmCanon: this arm's bind frame under the body's root (the animation is ignored), turned half a turn when the glove is on the far side
+lfs f1, 60(r8)
+lfs f2, 64(r8)
+lfs f3, 68(r8)
+lfs f4, 0(r10)
+lfs f5, 16(r10)
+lfs f6, 32(r10)
+fmuls f4, f1, f4
+fmuls f5, f2, f5
+fadds f4, f4, f5
+fmuls f6, f3, f6
+fadds f4, f4, f6
+fsubs f7, f7, f7
+.int 0xFC043800 ; fcmpu cr0, f4, f7
+blt mtArmCanonFlipL
+lwz r0, 0(r10)
+stw r0, 0(r5)
+lwz r0, 16(r10)
+stw r0, 16(r5)
+lwz r0, 32(r10)
+stw r0, 32(r5)
+lwz r0, 4(r10)
+stw r0, 4(r5)
+lwz r0, 20(r10)
+stw r0, 20(r5)
+lwz r0, 36(r10)
+stw r0, 36(r5)
+lwz r0, 8(r10)
+stw r0, 8(r5)
+lwz r0, 24(r10)
+stw r0, 24(r5)
+lwz r0, 40(r10)
+stw r0, 40(r5)
+b mtArmCanonDoneL
+mtArmCanonFlipL:
+lfs f1, 0(r10)
+fneg f1, f1
+stfs f1, 0(r5)
+lfs f1, 16(r10)
+fneg f1, f1
+stfs f1, 16(r5)
+lfs f1, 32(r10)
+fneg f1, f1
+stfs f1, 32(r5)
+lwz r0, 4(r10)
+stw r0, 4(r5)
+lwz r0, 20(r10)
+stw r0, 20(r5)
+lwz r0, 36(r10)
+stw r0, 36(r5)
+lfs f1, 8(r10)
+fneg f1, f1
+stfs f1, 8(r5)
+lfs f1, 24(r10)
+fneg f1, f1
+stfs f1, 24(r5)
+lfs f1, 40(r10)
+fneg f1, f1
+stfs f1, 40(r5)
+mtArmCanonDoneL:
 lwz r0, 0(r5)
 stw r0, 72(r8)
 lwz r0, 16(r5)
@@ -9113,8 +9630,143 @@ fadds f3, f3, f6
 fadds f3, f3, f13
 stfs f3, 136(r5)
 mtArmEndPointL:
+; the arm is built: kept as the pose to hold, and logged (mtArmLog)
+lis r6, mtArmHold@ha
+addi r6, r6, mtArmHold@l
+addi r6, r6, 0
+mr r7, r5
+li r9, 36
+mtArmHoldSaveL:
+lwz r0, 0(r7)
+stw r0, 0(r6)
+addi r7, r7, 4
+addi r6, r6, 4
+addi r9, r9, -1
+cmpwi r9, 0
+bgt mtArmHoldSaveL
+li r0, 1
+stw r0, 0(r6)
+li r0, 0
+stw r0, 4(r6)
+lis r6, mtArmLog@ha
+addi r6, r6, mtArmLog@l
+lwz r7, 0(r6)
+andi. r9, r7, 127
+mulli r9, r9, 64
+add r9, r9, r6
+addi r9, r9, 16
+addi r7, r7, 1
+stw r7, 0(r6)
+li r0, 0
+stw r0, 0(r9)
+lis r7, mtFireStat@ha
+addi r7, r7, mtFireStat@l
+lwz r0, 4(r7)
+stw r0, 4(r9)
+lwz r0, 12(r7)
+stw r0, 8(r9)
+lis r7, 0x0180
+lwz r0, 152(r7)
+stw r0, 12(r9)
+lwz r0, 0(r8)
+stw r0, 16(r9)
+lwz r0, 4(r8)
+stw r0, 20(r9)
+lwz r0, 8(r8)
+stw r0, 24(r9)
+lis r7, mtHandW@ha
+addi r7, r7, mtHandW@l
+lwz r0, 12(r7)
+stw r0, 28(r9)
+lwz r0, 28(r7)
+stw r0, 32(r9)
+lwz r0, 44(r7)
+stw r0, 36(r9)
+lwz r0, 96(r7)
+stw r0, 60(r9)
+lwz r0, 36(r8)
+stw r0, 40(r9)
+lwz r0, 40(r8)
+stw r0, 44(r9)
+lwz r0, 44(r8)
+stw r0, 48(r9)
+lwz r0, 136(r8)
+stw r0, 52(r9)
+lis r7, mtPad@ha
+addi r7, r7, mtPad@l
+lwz r0, 16(r7)
+stw r0, 56(r9)
 b mtArmDoneL
 mtArmFailL:
+; failed: the last good pose is held for a few frames before the arm shrinks into the shoulder (mtArmHold)
+lis r6, mtArmLog@ha
+addi r6, r6, mtArmLog@l
+lwz r7, 0(r6)
+andi. r9, r7, 127
+mulli r9, r9, 64
+add r9, r9, r6
+addi r9, r9, 16
+addi r7, r7, 1
+stw r7, 0(r6)
+li r0, 256
+stw r0, 0(r9)
+lis r7, mtFireStat@ha
+addi r7, r7, mtFireStat@l
+lwz r0, 4(r7)
+stw r0, 4(r9)
+lwz r0, 12(r7)
+stw r0, 8(r9)
+lis r7, 0x0180
+lwz r0, 152(r7)
+stw r0, 12(r9)
+lwz r0, 0(r8)
+stw r0, 16(r9)
+lwz r0, 4(r8)
+stw r0, 20(r9)
+lwz r0, 8(r8)
+stw r0, 24(r9)
+lis r7, mtHandW@ha
+addi r7, r7, mtHandW@l
+lwz r0, 12(r7)
+stw r0, 28(r9)
+lwz r0, 28(r7)
+stw r0, 32(r9)
+lwz r0, 44(r7)
+stw r0, 36(r9)
+lwz r0, 96(r7)
+stw r0, 60(r9)
+lwz r0, 148(r8)
+stw r0, 52(r9)
+lis r7, mtPad@ha
+addi r7, r7, mtPad@l
+lwz r0, 16(r7)
+stw r0, 56(r9)
+lis r6, mtArmHold@ha
+addi r6, r6, mtArmHold@l
+addi r6, r6, 0
+lwz r0, 144(r6)
+cmpwi r0, 0
+beq mtArmFailLZero
+lwz r9, 148(r6)
+cmpwi r9, 8
+bge mtArmFailLZero
+addi r9, r9, 1
+stw r9, 148(r6)
+lwz r9, 152(r6)
+addi r9, r9, 1
+stw r9, 152(r6)
+mr r7, r5
+li r9, 36
+mtArmHoldBackL:
+lwz r0, 0(r6)
+stw r0, 0(r7)
+addi r7, r7, 4
+addi r6, r6, 4
+addi r9, r9, -1
+cmpwi r9, 0
+bgt mtArmHoldBackL
+b mtArmDoneL
+mtArmFailLZero:
 ; not tracked (or a degenerate pose): the arm shrinks into the shoulder
 li r0, 0
 stw r0, 0(r5)
@@ -9508,6 +10160,72 @@ addi r9, r9, 1
 stw r9, 184(r8)
 mtArmKR:
 stfs f1, 136(r8)
+; mtArmCanon: this arm's bind frame under the body's root (the animation is ignored), turned half a turn when the glove is on the far side
+lfs f1, 60(r8)
+lfs f2, 64(r8)
+lfs f3, 68(r8)
+lfs f4, 0(r10)
+lfs f5, 16(r10)
+lfs f6, 32(r10)
+fmuls f4, f1, f4
+fmuls f5, f2, f5
+fadds f4, f4, f5
+fmuls f6, f3, f6
+fadds f4, f4, f6
+fsubs f7, f7, f7
+.int 0xFC043800 ; fcmpu cr0, f4, f7
+bgt mtArmCanonFlipR
+lfs f1, 0(r10)
+fneg f1, f1
+stfs f1, 0(r5)
+lfs f1, 16(r10)
+fneg f1, f1
+stfs f1, 16(r5)
+lfs f1, 32(r10)
+fneg f1, f1
+stfs f1, 32(r5)
+lfs f1, 4(r10)
+fneg f1, f1
+stfs f1, 4(r5)
+lfs f1, 20(r10)
+fneg f1, f1
+stfs f1, 20(r5)
+lfs f1, 36(r10)
+fneg f1, f1
+stfs f1, 36(r5)
+lwz r0, 8(r10)
+stw r0, 8(r5)
+lwz r0, 24(r10)
+stw r0, 24(r5)
+lwz r0, 40(r10)
+stw r0, 40(r5)
+b mtArmCanonDoneR
+mtArmCanonFlipR:
+lwz r0, 0(r10)
+stw r0, 0(r5)
+lwz r0, 16(r10)
+stw r0, 16(r5)
+lwz r0, 32(r10)
+stw r0, 32(r5)
+lfs f1, 4(r10)
+fneg f1, f1
+stfs f1, 4(r5)
+lfs f1, 20(r10)
+fneg f1, f1
+stfs f1, 20(r5)
+lfs f1, 36(r10)
+fneg f1, f1
+stfs f1, 36(r5)
+lfs f1, 8(r10)
+fneg f1, f1
+stfs f1, 8(r5)
+lfs f1, 24(r10)
+fneg f1, f1
+stfs f1, 24(r5)
+lfs f1, 40(r10)
+fneg f1, f1
+stfs f1, 40(r5)
+mtArmCanonDoneR:
 lwz r0, 0(r5)
 stw r0, 72(r8)
 lwz r0, 16(r5)
@@ -9973,8 +10691,143 @@ fadds f3, f3, f6
 fadds f3, f3, f13
 stfs f3, 136(r5)
 mtArmEndPointR:
+; the arm is built: kept as the pose to hold, and logged (mtArmLog)
+lis r6, mtArmHold@ha
+addi r6, r6, mtArmHold@l
+addi r6, r6, 160
+mr r7, r5
+li r9, 36
+mtArmHoldSaveR:
+lwz r0, 0(r7)
+stw r0, 0(r6)
+addi r7, r7, 4
+addi r6, r6, 4
+addi r9, r9, -1
+cmpwi r9, 0
+bgt mtArmHoldSaveR
+li r0, 1
+stw r0, 0(r6)
+li r0, 0
+stw r0, 4(r6)
+lis r6, mtArmLog@ha
+addi r6, r6, mtArmLog@l
+lwz r7, 0(r6)
+andi. r9, r7, 127
+mulli r9, r9, 64
+add r9, r9, r6
+addi r9, r9, 16
+addi r7, r7, 1
+stw r7, 0(r6)
+li r0, 1
+stw r0, 0(r9)
+lis r7, mtFireStat@ha
+addi r7, r7, mtFireStat@l
+lwz r0, 4(r7)
+stw r0, 4(r9)
+lwz r0, 12(r7)
+stw r0, 8(r9)
+lis r7, 0x0180
+lwz r0, 152(r7)
+stw r0, 12(r9)
+lwz r0, 0(r8)
+stw r0, 16(r9)
+lwz r0, 4(r8)
+stw r0, 20(r9)
+lwz r0, 8(r8)
+stw r0, 24(r9)
+lis r7, mtHandW@ha
+addi r7, r7, mtHandW@l
+lwz r0, 60(r7)
+stw r0, 28(r9)
+lwz r0, 76(r7)
+stw r0, 32(r9)
+lwz r0, 92(r7)
+stw r0, 36(r9)
+lwz r0, 100(r7)
+stw r0, 60(r9)
+lwz r0, 36(r8)
+stw r0, 40(r9)
+lwz r0, 40(r8)
+stw r0, 44(r9)
+lwz r0, 44(r8)
+stw r0, 48(r9)
+lwz r0, 136(r8)
+stw r0, 52(r9)
+lis r7, mtPad@ha
+addi r7, r7, mtPad@l
+lwz r0, 88(r7)
+stw r0, 56(r9)
 b mtArmDoneR
 mtArmFailR:
+; failed: the last good pose is held for a few frames before the arm shrinks into the shoulder (mtArmHold)
+lis r6, mtArmLog@ha
+addi r6, r6, mtArmLog@l
+lwz r7, 0(r6)
+andi. r9, r7, 127
+mulli r9, r9, 64
+add r9, r9, r6
+addi r9, r9, 16
+addi r7, r7, 1
+stw r7, 0(r6)
+li r0, 257
+stw r0, 0(r9)
+lis r7, mtFireStat@ha
+addi r7, r7, mtFireStat@l
+lwz r0, 4(r7)
+stw r0, 4(r9)
+lwz r0, 12(r7)
+stw r0, 8(r9)
+lis r7, 0x0180
+lwz r0, 152(r7)
+stw r0, 12(r9)
+lwz r0, 0(r8)
+stw r0, 16(r9)
+lwz r0, 4(r8)
+stw r0, 20(r9)
+lwz r0, 8(r8)
+stw r0, 24(r9)
+lis r7, mtHandW@ha
+addi r7, r7, mtHandW@l
+lwz r0, 60(r7)
+stw r0, 28(r9)
+lwz r0, 76(r7)
+stw r0, 32(r9)
+lwz r0, 92(r7)
+stw r0, 36(r9)
+lwz r0, 100(r7)
+stw r0, 60(r9)
+lwz r0, 148(r8)
+stw r0, 52(r9)
+lis r7, mtPad@ha
+addi r7, r7, mtPad@l
+lwz r0, 88(r7)
+stw r0, 56(r9)
+lis r6, mtArmHold@ha
+addi r6, r6, mtArmHold@l
+addi r6, r6, 160
+lwz r0, 144(r6)
+cmpwi r0, 0
+beq mtArmFailRZero
+lwz r9, 148(r6)
+cmpwi r9, 8
+bge mtArmFailRZero
+addi r9, r9, 1
+stw r9, 148(r6)
+lwz r9, 152(r6)
+addi r9, r9, 1
+stw r9, 152(r6)
+mr r7, r5
+li r9, 36
+mtArmHoldBackR:
+lwz r0, 0(r6)
+stw r0, 0(r7)
+addi r7, r7, 4
+addi r6, r6, 4
+addi r9, r9, -1
+cmpwi r9, 0
+bgt mtArmHoldBackR
+b mtArmDoneR
+mtArmFailRZero:
 ; not tracked (or a degenerate pose): the arm shrinks into the shoulder
 li r0, 0
 stw r0, 0(r5)
@@ -10236,6 +11089,18 @@ addi r7, r7, mtTurnKeep@l
 lwz r0, 16(r7)
 cmpwi r0, 0
 beq mtHeadOrig
+; the Bill Box suit (mtPipeEye+24 > 0, its skeleton in mtBoxHide+16) is turned with the view like a part
+lis r6, mtPipeEye@ha
+addi r6, r6, mtPipeEye@l
+lwz r0, 24(r6)
+cmpwi r0, 0
+ble mtBoxTurnNo
+lis r6, mtBoxHide@ha
+addi r6, r6, mtBoxHide@l
+lwz r6, 16(r6)
+cmpw r6, r3
+beq mtPartTurn
+mtBoxTurnNo:
 lwz r5, 16(r8)
 cmplwi r5, 17
 bgt mtHeadOrig
@@ -11455,6 +12320,25 @@ lis r5, mtEyeFit@ha
 addi r5, r5, mtEyeFit@l
 lfs f1, 56(r5)
 fmuls f0, f0, f1
+; giant body: the gloves are a little smaller (mtEyeFit+76 at the most, reached at 1 + 1/(+80) times the normal size)
+lfs f2, 40(r5)
+fsubs f2, f1, f2
+lfs f3, 80(r5)
+fmuls f2, f2, f3
+fsubs f3, f3, f3
+.int 0xFC031000 ; fcmpu cr0, f3, f2
+bge mtGlvNoGiant
+lfs f3, 40(r5)
+.int 0xFC021800 ; fcmpu cr0, f2, f3
+ble mtGlvGiantT
+fmr f2, f3
+mtGlvGiantT:
+lfs f3, 76(r5)
+fmuls f2, f2, f3
+lfs f3, 40(r5)
+fsubs f3, f3, f2
+fmuls f0, f0, f3
+mtGlvNoGiant:
 lfs f1, 0(r4)
 fmuls f1, f1, f0
 stfs f1, 0(r4)
@@ -11604,12 +12488,516 @@ mulli r5, r10, 4
 add r5, r5, r9
 li r0, 1
 stw r0, 96(r5)
+; the punch: this hand's glove is in place
+mflr r0
+stwu r1, -0x20(r1)
+stw r0, 0x24(r1)
+stw r3, 8(r1)
+stw r4, 12(r1)
+bl mtPunchHand
+lwz r3, 8(r1)
+lwz r4, 12(r1)
+lwz r0, 0x24(r1)
+mtlr r0
+addi r1, r1, 0x20
 mtHandOrig:
 b mtHandOriginalSet
 0x024069A0 = mtHandOriginalSet:
 0x0247EB5C = bla mtHandFinal
 0x0247EBA8 = bla mtHandFinal
 0x0247EC20 = bla mtHandFinal
+
+; ---- Punch ----------------------------------------------------------------------------------------------------
+; The director is caught where the sensor creation hands a new sensor to the group assignment (0x0244DD78): r3 = the director, r27 = the pool.
+mtSensorSpy:
+lis r12, mtPunch@ha
+addi r12, r12, mtPunch@l
+stw r3, 28(r12)
+stw r27, 32(r12)
+lwz r11, 44(r12)
+addi r11, r11, 1
+stw r11, 44(r12)
+b mtGroupAssign
+0x0240820C = bla mtSensorSpy
+0x0244DD78 = mtGroupAssign:
+; The message log: the dispatcher's first instruction (0x02409490, mr r6, r5) comes here with r3 = the message, r4 = the sender sensor, r5 = the receiver sensor.
+mtMsgSpy:
+lis r12, mtMsgLog@ha
+addi r12, r12, mtMsgLog@l
+lwz r11, 8(r12)
+addi r11, r11, 1
+stw r11, 8(r12)
+lwz r6, 0(r3)
+li r7, 255
+lis r0, 0x1000
+cmplw r5, r0
+blt mtMsgNoRecv
+lis r0, 0x5000
+cmplw r5, r0
+bge mtMsgNoRecv
+andi. r0, r5, 3
+bne mtMsgNoRecv
+lwz r7, 4(r5)
+mtMsgNoRecv:
+li r8, 255
+lis r0, 0x1000
+cmplw r4, r0
+blt mtMsgNoSend
+lis r0, 0x5000
+cmplw r4, r0
+bge mtMsgNoSend
+andi. r0, r4, 3
+bne mtMsgNoSend
+lwz r8, 4(r4)
+mtMsgNoSend:
+lwz r9, 4(r12)
+addi r10, r12, 16
+mtMsgFind:
+cmpwi r9, 0
+ble mtMsgNew
+lwz r11, 0(r10)
+cmpw r11, r6
+bne mtMsgNext
+lwz r11, 4(r10)
+cmpw r11, r7
+bne mtMsgNext
+lwz r11, 8(r10)
+cmpw r11, r8
+bne mtMsgNext
+lwz r11, 12(r10)
+addi r11, r11, 1
+stw r11, 12(r10)
+b mtMsgDone
+mtMsgNext:
+addi r10, r10, 16
+addi r9, r9, -1
+b mtMsgFind
+mtMsgNew:
+lwz r9, 4(r12)
+cmpwi r9, 48
+bge mtMsgDone
+stw r6, 0(r10)
+stw r7, 4(r10)
+stw r8, 8(r10)
+li r11, 1
+stw r11, 12(r10)
+addi r9, r9, 1
+stw r9, 4(r12)
+mtMsgDone:
+mr r6, r5
+b mtMsgBack
+0x02409490 = ba mtMsgSpy
+0x02409494 = mtMsgBack:
+; The game's own functions used below.
+0x0227E4E0 = mtPunIsX:
+0x02409B4C = mtPunSendSpin:
+0x02409A98 = mtPunSendBody:
+0x0240983C = mtPunSendFire:
+0x02409568 = mtPunSendStomp:
+; mtPunchHand: r10 = the hand (0 left, 1 right) whose glove matrix has just been stored in mtHandW; r3, r4 and LR are kept by the caller.
+mtPunchHand:
+mflr r0
+stwu r1, -0x50(r1)
+stw r0, 0x54(r1)
+stmw r24, 0x28(r1)
+lis r31, mtPunch@ha
+addi r31, r31, mtPunch@l
+mr r30, r10
+lwz r8, 48(r31)
+addi r8, r8, 1
+stw r8, 48(r31)
+lwz r0, 0(r31)
+cmpwi r0, 0
+beq mtPunOut
+mulli r9, r30, 4
+add r9, r9, r31
+lwz r8, 36(r9)
+cmpwi r8, 0
+ble mtPunReady
+addi r8, r8, -1
+stw r8, 36(r9)
+b mtPunOut
+mtPunReady:
+; the grip of this hand (mtPad: left block at +16, right at +88; +0 tracked, +52 the buttons, 32 = grip)
+lis r8, mtPad@ha
+addi r8, r8, mtPad@l
+mulli r9, r30, 72
+addi r9, r9, 16
+add r9, r8, r9
+lwz r0, 0(r9)
+cmpwi r0, 1
+bne mtPunOut
+lwz r0, 52(r9)
+andi. r0, r0, 32
+beq mtPunOut
+; the hand's speed, per step, in tracking units (mtHandVel, 32 bytes per hand: +12 known, +16.. the last movement)
+lis r8, mtHandVel@ha
+addi r8, r8, mtHandVel@l
+mulli r0, r30, 32
+add r8, r8, r0
+lwz r0, 12(r8)
+cmpwi r0, 0
+beq mtPunOut
+lfs f1, 16(r8)
+lfs f2, 20(r8)
+lfs f3, 24(r8)
+fmuls f4, f1, f1
+fmuls f5, f2, f2
+fadds f4, f4, f5
+fmuls f5, f3, f3
+fadds f4, f4, f5
+stfs f4, 96(r31)
+lfs f5, 100(r31)
+.int 0xFC042800 ; fcmpu cr0, f4, f5
+ble mtPunNoPeak
+stfs f4, 100(r31)
+mtPunNoPeak:
+lfs f5, 4(r31)
+.int 0xFC042800 ; fcmpu cr0, f4, f5
+blt mtPunOut
+lwz r8, 52(r31)
+addi r8, r8, 1
+stw r8, 52(r31)
+; the fist: the glove's place (mtHandW matrix, 48 bytes per hand, position at 12/28/44) a little ahead along its fingers (column 2 at 8/24/40)
+lis r29, mtHandW@ha
+addi r29, r29, mtHandW@l
+mulli r0, r30, 48
+add r29, r29, r0
+lfs f10, 12(r29)
+lfs f11, 28(r29)
+lfs f12, 44(r29)
+lfs f1, 92(r31)
+lfs f2, 8(r29)
+fmuls f2, f2, f1
+fadds f10, f10, f2
+lfs f2, 24(r29)
+fmuls f2, f2, f1
+fadds f11, f11, f2
+lfs f2, 40(r29)
+fmuls f2, f2, f1
+fadds f12, f12, f2
+lwz r28, 28(r31)
+lis r0, 0x1000
+cmplw r28, r0
+blt mtPunNoDir
+lis r0, 0x5000
+cmplw r28, r0
+bge mtPunNoDir
+andi. r0, r28, 3
+bne mtPunNoDir
+li r25, 0
+lfs f13, 104(r31)
+li r24, 0
+mtPunPass:
+cmpwi r24, 0
+bne mtPunPass2
+lwz r6, 28(r31)
+lwz r28, 28(r6)
+b mtPunGroup
+mtPunPass2:
+lwz r6, 28(r31)
+lwz r28, 20(r6)
+mtPunGroup:
+lis r0, 0x1000
+cmplw r28, r0
+blt mtPunNextPass
+lis r0, 0x5000
+cmplw r28, r0
+bge mtPunNextPass
+andi. r0, r28, 3
+bne mtPunNextPass
+lwz r27, 4(r28)
+cmpwi r27, 0
+ble mtPunNextPass
+cmplwi r27, 4096
+bgt mtPunNextPass
+lwz r26, 8(r28)
+lis r0, 0x1000
+cmplw r26, r0
+blt mtPunNextPass
+lis r0, 0x5000
+cmplw r26, r0
+bge mtPunNextPass
+andi. r0, r26, 3
+bne mtPunNextPass
+mtPunLoop:
+cmpwi r27, 0
+ble mtPunNextPass
+lwz r5, 0(r26)
+addi r26, r26, 4
+addi r27, r27, -1
+lis r0, 0x1000
+cmplw r5, r0
+blt mtPunLoop
+lis r0, 0x5000
+cmplw r5, r0
+bge mtPunLoop
+andi. r0, r5, 3
+bne mtPunLoop
+lbz r0, 0x28(r5)
+cmpwi r0, 0
+beq mtPunLoop
+lbz r0, 0x29(r5)
+cmpwi r0, 0
+beq mtPunLoop
+lwz r8, 56(r31)
+addi r8, r8, 1
+stw r8, 56(r31)
+lwz r7, 4(r5)
+lwz r6, 16(r31)
+cmpw r7, r6
+blt mtPunLoop
+lwz r6, 20(r31)
+cmpw r7, r6
+bgt mtPunLoop
+lwz r4, 0x2C(r5)
+lis r0, 0x1000
+cmplw r4, r0
+blt mtPunLoop
+lis r0, 0x5000
+cmplw r4, r0
+bge mtPunLoop
+andi. r0, r4, 3
+bne mtPunLoop
+lwz r4, 0x7C(r4)
+lis r0, 0x1000
+cmplw r4, r0
+blt mtPunLoop
+lis r0, 0x5000
+cmplw r4, r0
+bge mtPunLoop
+andi. r0, r4, 3
+bne mtPunLoop
+lbz r0, 0(r4)
+cmpwi r0, 0
+bne mtPunLoop
+lfs f1, 8(r5)
+fsubs f1, f1, f10
+lfs f2, 12(r5)
+fsubs f2, f2, f11
+lfs f3, 16(r5)
+fsubs f3, f3, f12
+fmuls f1, f1, f1
+fmuls f2, f2, f2
+fadds f1, f1, f2
+fmuls f2, f3, f3
+fadds f1, f1, f2
+lfs f4, 20(r5)
+lfs f5, 8(r31)
+fadds f4, f4, f5
+fmuls f4, f4, f4
+.int 0xFC012000 ; fcmpu cr0, f1, f4
+bge mtPunLoop
+lwz r8, 60(r31)
+addi r8, r8, 1
+stw r8, 60(r31)
+.int 0xFC016800 ; fcmpu cr0, f1, f13
+bge mtPunLoop
+fmr f13, f1
+mr r25, r5
+b mtPunLoop
+mtPunNextPass:
+addi r24, r24, 1
+cmpwi r24, 2
+blt mtPunPass
+cmpwi r25, 0
+beq mtPunOut
+stw r25, 76(r31)
+lwz r0, 4(r25)
+stw r0, 80(r31)
+lwz r0, 0x2C(r25)
+stw r0, 84(r31)
+; Mario himself, and his 'SpinAttack' sensor (the player's sensors: [player+0x4C] -> +4 count, +8 array; a sensor's name is a pointer to the text)
+lis r11, mtHideActor@ha
+lwz r29, mtHideActor@l(r11)
+lis r0, 0x1000
+cmplw r29, r0
+blt mtPunNoPlayer
+lis r0, 0x5000
+cmplw r29, r0
+bge mtPunNoPlayer
+andi. r0, r29, 3
+bne mtPunNoPlayer
+lwz r28, 0x4C(r29)
+lis r0, 0x1000
+cmplw r28, r0
+blt mtPunNoPlayer
+lis r0, 0x5000
+cmplw r28, r0
+bge mtPunNoPlayer
+andi. r0, r28, 3
+bne mtPunNoPlayer
+lwz r27, 4(r28)
+cmplwi r27, 32
+bgt mtPunNoPlayer
+lwz r26, 8(r28)
+lis r0, 0x1000
+cmplw r26, r0
+blt mtPunNoPlayer
+lis r0, 0x5000
+cmplw r26, r0
+bge mtPunNoPlayer
+andi. r0, r26, 3
+bne mtPunNoPlayer
+li r24, 0
+mtPunSndLoop:
+cmpwi r27, 0
+ble mtPunSndDone
+lwz r5, 0(r26)
+addi r26, r26, 4
+addi r27, r27, -1
+lis r0, 0x1000
+cmplw r5, r0
+blt mtPunSndLoop
+lis r0, 0x5000
+cmplw r5, r0
+bge mtPunSndLoop
+andi. r0, r5, 3
+bne mtPunSndLoop
+lwz r0, 0x2C(r5)
+cmpw r0, r29
+bne mtPunSndLoop
+cmpwi r24, 0
+bne mtPunSndHave
+mr r24, r5
+mtPunSndHave:
+lwz r6, 0(r5)
+lis r0, 0x1000
+cmplw r6, r0
+blt mtPunSndLoop
+lis r0, 0x5000
+cmplw r6, r0
+bge mtPunSndLoop
+andi. r0, r6, 3
+bne mtPunSndLoop
+lwz r7, 0(r6)
+lis r8, 0x5370
+ori r8, r8, 0x696E
+cmpw r7, r8
+bne mtPunSndLoop
+lwz r7, 4(r6)
+lis r8, 0x4174
+ori r8, r8, 0x7461
+cmpw r7, r8
+bne mtPunSndLoop
+lhz r7, 8(r6)
+cmplwi r7, 0x636B
+bne mtPunSndLoop
+mr r24, r5
+b mtPunSndDone
+mtPunSndDone:
+cmpwi r24, 0
+beq mtPunNoSender
+stw r24, 88(r31)
+lwz r8, 64(r31)
+addi r8, r8, 1
+stw r8, 64(r31)
+lwz r0, 24(r31)
+mr r3, r25
+mr r4, r24
+cmpwi r0, 1
+beq mtPunEffBody
+cmpwi r0, 2
+beq mtPunEffFire
+cmpwi r0, 3
+beq mtPunEffStomp
+; 0: the spin attack, with the parameter the game picks at 0x0228B5C4
+lwz r9, 0xC0(r29)
+lis r0, 0x1000
+cmplw r9, r0
+blt mtPunSent
+lis r0, 0x5000
+cmplw r9, r0
+bge mtPunSent
+andi. r0, r9, 3
+bne mtPunSent
+lwz r3, 0x50(r9)
+bl mtPunIsX
+cmpwi r3, 0
+lwz r5, 0x1F8(r29)
+beq mtPunSpinGo
+lwz r5, 0x1E8(r29)
+mtPunSpinGo:
+mr r3, r25
+mr r4, r24
+bl mtPunSendSpin
+b mtPunSent
+mtPunEffBody:
+lwz r12, 0(r29)
+lwz r0, 0x2FC(r12)
+mtctr r0
+mr r3, r29
+bctrl
+mr r5, r3
+mr r3, r25
+mr r4, r24
+bl mtPunSendBody
+b mtPunSent
+mtPunEffFire:
+bl mtPunSendFire
+b mtPunSent
+mtPunEffStomp:
+lwz r12, 0(r29)
+lwz r0, 0x2FC(r12)
+mtctr r0
+mr r3, r29
+bctrl
+mr r5, r3
+mr r3, r25
+mr r4, r24
+bl mtPunSendStomp
+b mtPunSent
+mtPunSent:
+cmpwi r3, 0
+beq mtPunRefused
+lwz r8, 68(r31)
+addi r8, r8, 1
+stw r8, 68(r31)
+lwz r8, 12(r31)
+mulli r9, r30, 4
+add r9, r9, r31
+stw r8, 36(r9)
+lis r12, mtRumbleData@ha
+addi r12, r12, mtRumbleData@l
+lwz r11, 8(r12)
+addi r11, r11, 1
+stw r11, 8(r12)
+li r11, 0
+stw r11, 4(r12)
+lwz r11, 0(r12)
+addi r11, r11, 1
+stw r11, 0(r12)
+b mtPunOut
+mtPunRefused:
+lwz r8, 72(r31)
+addi r8, r8, 1
+stw r8, 72(r31)
+li r8, 6
+mulli r9, r30, 4
+add r9, r9, r31
+stw r8, 36(r9)
+b mtPunOut
+mtPunNoDir:
+lwz r8, 108(r31)
+addi r8, r8, 1
+stw r8, 108(r31)
+b mtPunOut
+mtPunNoSender:
+lwz r8, 112(r31)
+addi r8, r8, 1
+stw r8, 112(r31)
+b mtPunOut
+mtPunNoPlayer:
+lwz r8, 116(r31)
+addi r8, r8, 1
+stw r8, 116(r31)
+b mtPunOut
+mtPunOut:
+lmw r24, 0x28(r1)
+lwz r0, 0x54(r1)
+mtlr r0
+addi r1, r1, 0x50
+blr
 
 ; Thrown fireball, start position. The fireball's set-up routine (0x022AD6A0) asks for the joint
 ; 'HandR' of Mario's body (0x024025A0), then moves that point out of walls with its own sweep test,
@@ -13074,6 +14462,26 @@ mtActLogPipe:
 ; in the air (mtActLog+220: actions with "Jump" or "Fall" in the name, or "HipDrop" but not its
 ; landing) - to see what you jump on.
 mflr r9
+; Eye height inside clear pipes (mtPipeEye): "RouteDokan" anywhere in the player's action name (Peach's is PeachRouteDokanMove) = inside, any other player action = out
+mr r5, r4
+lis r6, mtStrRouteDokan@ha
+addi r6, r6, mtStrRouteDokan@l
+bl mtStrHas
+lis r11, mtPipeEye@ha
+addi r11, r11, mtPipeEye@l
+stw r7, 0(r11)
+lis r10, mtEyeFit@ha
+addi r10, r10, mtEyeFit@l
+lwz r10, 84(r10)
+stw r10, 4(r11)
+; Captain Toad's stages (the action name contains KinopioBrigade): the eyes sit lower, nearer his red collar, below the helmet lamp (mtPipeEye+16/+20)
+mr r5, r4
+lis r6, mtStrBrigade@ha
+addi r6, r6, mtStrBrigade@l
+bl mtStrHas
+lis r11, mtPipeEye@ha
+addi r11, r11, mtPipeEye@l
+stw r7, 16(r11)
 ; Scene changes and transitions (mtTube+168 = 1): while the player's action is a pipe, door, warp,
 ; goal, cutscene ("Demo"), death or miss one, the first-person body and gloves are hidden
 ; (mtFpBody+0 and mtHandCtl+0 kept in mtTube+152/+156, put back with the next other action)
@@ -14166,12 +15574,250 @@ mtHideActor:
 ; captured, up to 17). 0 = the whole body is drawn; 0xFFFFFFFF = all hidden.
 mtHideMask:
 .int 0
+; mtPunch: the punch. +0 on (1), +4 the squared hand speed (tracking units per step) that arms it (2025 = 45 per step), +8 how far (game units) the
+; glove's reach goes beyond an enemy sensor's radius (45), +12 steps of rest after a hit (20), +16/+20 the lowest/highest sensor type it hits (5..10),
+; +24 what is sent: 0 the spin attack (the game's own message for Mario's spin), 1 the body attack, 2 a fireball hit, 3 the stomp message;
+; +28 the sensor director (caught), +32 the sensor pool (caught), +36/+40 the rest left for the left/right hand, +44 sensors created seen;
+; counters +48 glove updates, +52 armed (grip + speed), +56 sensors looked at, +60 in reach, +64 messages sent, +68 accepted, +72 refused;
+; +76 the last target sensor, +80 its type, +84 its owner, +88 the sender sensor used; +92 how far ahead of the glove's middle the fist is (10),
+; +96 the latest squared speed with the grip held, +100 the biggest one so far, +104 a huge float, +108 no director yet, +112 no sender sensor,
+; +116 no player yet, +120 pool of the last sensor created
+mtPunch:
+.int 1
+.int 0x44FD2000
+.int 0x42340000
+.int 20
+.int 5
+.int 10
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0x41200000
+.int 0
+.int 0
+.int 0x7149F2CA
+.int 0
+.int 0
+.int 0
+.int 0
+; the message log: +0 'MMSG', +4 entries, +8 messages in all, +16.. entries of 16 bytes (message vtable, receiver sensor type, sender sensor type, count)
+mtMsgLog:
+.int 0x4D4D5347
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
 ; The in-headset options menu (B + Y, drawn by cemuvr_layer.dll) finds its settings through this
 ; table: magic 'MVRM', version, count, then the guest address of each settings block, in this order.
 mtMenuTable:
 .int 0x4D56524D
 .int 1
-.int 19
+.int 24
 .int mtFpBody
 .int mtEyeFit
 .int mrSnapSin
@@ -14191,6 +15837,11 @@ mtMenuTable:
 .int mtActLog
 .int mtTube
 .int rrCameraOriginal
+.int mtPunch
+.int mtPipeEye
+.int mrSceneClass
+.int mtBodyFollow
+.int mrLookCos
 ; Player body in the original first person (camera distance 0): each bit draws one shape of the
 ; player's own body model (bit 0 = first shape; Mario has 5, Peach 6), so looking down shows the
 ; body; 0 = hidden as in the original. The eyes, face and other parts stay hidden, the gloves
@@ -14577,6 +16228,34 @@ mtStrDokan:
 .int 0x446F6B61
 .int 0x6E000000
 .int 0x00000000
+; mtPipeEye: 0 1 = the player is in a clear pipe ride (runtime), 4 the eye height to use there (copied from mtEyeFit+84, 60, at the start of the ride), 8 the height in use (runtime, eased; 0 = not started),
+; 12 easing per step (0.2)
+mtPipeEye:
+.int 0
+.int 0
+.int 0
+.int 0x3E4CCCCD
+.int 0 ; +16 1 = the player's action is Captain Toad's (KinopioBrigade; runtime)
+.int 0xC2340000 ; +20 how much lower the eyes are in his stages (float, game units, -45; 0 = as everywhere; the menu sets it)
+.int 0 ; +24 the Bill Box suit is worn: a countdown (runtime; 3 when a BoxKiller model is seen around the eye, counted down by rrCameraHook)
+.int 0x42200000 ; +28 how much higher the eyes are with the suit (float, game units, 40; the menu sets it)
+.int 1 ; +32 the body follows the player's real turning and the character turns with it (1 = yes; the menu "Corpo acompanha o giro real" sets it; on by default since Version 1.9)
+.int 0 ; +36 mtSnapMask: a snap turn has just happened (bit mask shifted right per eye step; runtime)
+; mtBodyFollow: the body's heading (x, z) in the tracking space, written by the layer every frame while the option is on (0, -1 = the tracking forward)
+mtBodyFollow:
+.int 0
+.int 0xBF800000
+mtStrRouteDokan:
+.int 0x526F7574
+.int 0x65446F6B
+.int 0x616E0000
+.int 0x00000000
+mtStrBrigade:
+.int 0x4B696E6F
+.int 0x70696F42
+.int 0x72696761
+.int 0x64650000
+.int 0x00000000
 mtStrDemo:
 .int 0x44656D6F
 .int 0x00000000
@@ -14822,8 +16501,8 @@ mtEyeFit:
 .int 0x3D4CCCCD
 .int 0x42480000
 .int 0x453B8000
-.int 1
-.int 0xC1F00000 ; +20 fine adjustment for a big character, game units (float, -30; the menu sets it)
+.int 0
+.int 0x40A00000 ; +20 fine adjustment for a big character, game units (float, +5; the menu sets it)
 .int 0x43110000 ; +24 the height when off (145)
 .int 0 ; +28 highest neck height seen (runtime)
 .int 0 ; +32 its skeleton (runtime)
@@ -14834,8 +16513,2149 @@ mtEyeFit:
 .int 0x3FC00000 ; +52 1.5
 .int 0x3F800000 ; +56 the body model's scale last measured (runtime; the gloves grow with it)
 .int 0x42DC0000 ; +60 below this eye height the character counts as small (float, 110)
-.int 0x40A00000 ; +64 fine adjustment for a small character (float, +5)
+.int 0x41C80000 ; +64 fine adjustment for a small character (float, +25)
 .int 0 ; +68 the first-person camera this far ahead of Mario's eyes (float, game units; - = behind)
+.int 0 ; +72 how much higher than Mario's eye height (+24) a tall character may see from in the "Sempre a do Mario" mode (float, game units; 0 = Mario's)
+.int 0x3E000000 ; +76 how much smaller (share) the gloves are when the body is giant (0.125)
+.int 0x3F800000 ; +80 1 / (the body scale - 1 at which that reduction is complete): 1.0 = complete at twice the normal size
+.int 0x42700000 ; +84 eye height inside clear pipes (float, game units above the player's origin; 60 = the user's choice, for every character; 0 = off, the standing height as before)
+; mtArmHold: per arm (left at +0, right at +160): 36 words = the arm's bones 15,16,17 / 19,20,21 as last built, +144 valid, +148 consecutive failures held,
+; +152 failures held in all, +156 the most failures held in a row (8)
+mtArmHold:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 8
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 8
+; mtArmLog: +0 entries written, then 128 entries of 16 words (see the note at the top of patch_armlog.py)
+mtArmLog:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
 mtArmTmp:
 .int 0
 .int 0
@@ -15187,7 +19007,7 @@ mtHandCtl:
 ; +40 their small forms (1.3), +44 Toad (1.35), +48 small Toad (1.55). The thickness follows the glove's wrist: Mario's sleeve (radius 8.2)
 ; is 1.4 times his glove's cuff (5.9), and the same ratio is kept for the others.
 mtGloveSize:
-.int 0x3F733333
+.int 0x3F99999A
 .int 0x3FA66666
 .int 0x40800000
 .int 0x41A00000
@@ -15196,7 +19016,7 @@ mtGloveSize:
 .int 0x3FCCCCCD
 .int 0x3F800000
 .int 0x3FB6DB6E
-.int 0x3F99999A
+.int 0x3FC00000
 .int 0x3FA66666
 .int 0x3FACCCCD
 .int 0x3FC66666
@@ -15207,7 +19027,7 @@ mtGloveSize:
 .int 0x40D33333
 .int 0x3F800000
 .int 0x3F4CCCCD
-.int 0x41600000
+.int 0x41200000
 .int 0
 ; +76 the forearm's thickness relative to the upper arm's for Toad (0.8; the other characters 1.0); +80 / +84 how far the arm's end
 .int 0x40800000
@@ -15591,6 +19411,34 @@ mtSwingL:
 .int 0
 .int 0
 .int 0
+; mtRunGate (hook 0x0236AC84, the game's pad update: stw r11, 0(r29) = the buttons that went down on this read): while the right B alone holds X (mtRunB+4) the X press (8)
+; is taken out, so the Mario runs (X is still held) but no fireball is thrown and the cat does not scratch; mtRunB+8 puts an X press in for one read (the attack gesture, also while
+; B is held). r11 = pressed word, r29 = the pad object; r12 and r0 are free here.
+mtRunGate:
+lis r12, mtRunB@ha
+addi r12, r12, mtRunB@l
+lwz r0, 4(r12)
+cmpwi r0, 0
+beq mtRunGatePulse
+rlwinm r11, r11, 0, 29, 27
+mtRunGatePulse:
+lwz r0, 8(r12)
+cmpwi r0, 0
+beq mtRunGateDone
+ori r11, r11, 8
+li r0, 0
+stw r0, 8(r12)
+mtRunGateDone:
+stw r11, 0(r29)
+blr
+; mtRunB: 0 switch (1 = the right B only runs, 0 = B also attacks as before), 4 B alone holds X on this read, 8 an X press to put in on the next pad update (the attack gesture),
+; 12 B is pressing X on this read, 16 something else (right trigger, left X, the attack gesture) is.
+mtRunB:
+.int 1
+.int 0
+.int 0
+.int 0
+.int 0
 ; mtMic: 0 blow switch (1 = the hand at the mouth counts as blowing, 0 = off), 4 the blowing flag
 ; (runtime), 8 the loudness reported while blowing (float; the game's own scale runs to about 4096,
 ; its 'sound' threshold is 550), 12 how close the hand must be to the head point, squared (units,
@@ -15770,137 +19618,11918 @@ mtMotionData:
 0x022D8690 = mtGodRaySkip:
 0x022D85CC = b mtGodRaySkip
 
-; pfPipe: block mrCull rescues while drawing the Cat Mario bonus room actor (EnterCatMarioBonusRoom),
-; which carries a large Black01 enclosure that appears as a black polygon in VR when the room is
-; rescued into the frustum. pfPipeState[0]=current block, [4]=found count, [8]=blocked rescue count.
-pfPipeState:
+; ---- Visibility and transitions (from Alpha 1.4): title / file-select wipes on the menu canvas (ts*), world-map and bonus-room filters, effect flare filter (pf*) ----
+tsScene:
+.int 0
+tsStats:
+.int 0
 .int 0
 .int 0
 .int 0
 
-; Hook the game's pfParticleFill function at four call sites. Before each call, check if the
-; actor being processed is EnterCatMarioBonusRoom; if so, set pfPipeState=1 so mrCullTryEyes
-; skips any rescue attempts that would pull in the black enclosure geometry.
-0x0254DF08 = pfPipeNative:
-0x02558F78 = bla pfPipeActorHook
-0x02548B3C = bla pfPipeActorHook
-0x0255C220 = bla pfPipeActorHook
-0x0255C2F8 = bla pfPipeActorHook
+pfGate:
+stwu r1, -0x40(r1)
+stw r4, 8(r1)
+stw r5, 12(r1)
+stw r6, 16(r1)
+stw r7, 20(r1)
+stw r8, 24(r1)
+stw r9, 28(r1)
+stw r10, 32(r1)
+stw r11, 36(r1)
+stw r12, 40(r1)
+lis r12, pfState@ha
+addi r12, r12, pfState@l
+li r0, 0
+stw r0, 24(r12)
+lis r9, mrSceneClass@ha
+lwz r9, mrSceneClass@l(r9)
+lis r8, 0x1027
+ori r8, r8, 0xF388
+cmpw r9, r8
+bne pfW2RoomPass
+lwz r9, 12(r12)
+cmpwi r9, 1
+beq pfW2RoomName
+cmpwi r9, 2
+bne pfW2RoomPass
+pfW2RoomName:
+lbz r0, 36(r3)
+cmpwi r0, 79
+bne pfW2RoomWater
+lbz r0, 37(r3)
+cmpwi r0, 98
+bne pfW2RoomWater
+lbz r0, 38(r3)
+cmpwi r0, 106
+bne pfW2RoomWater
+lbz r0, 39(r3)
+cmpwi r0, 101
+bne pfW2RoomWater
+lbz r0, 40(r3)
+cmpwi r0, 99
+bne pfW2RoomWater
+lbz r0, 41(r3)
+cmpwi r0, 116
+bne pfW2RoomWater
+lbz r0, 42(r3)
+cmpwi r0, 68
+bne pfW2RoomWater
+lbz r0, 43(r3)
+cmpwi r0, 97
+bne pfW2RoomWater
+lbz r0, 44(r3)
+cmpwi r0, 116
+bne pfW2RoomWater
+lbz r0, 45(r3)
+cmpwi r0, 97
+bne pfW2RoomWater
+lbz r0, 46(r3)
+cmpwi r0, 47
+bne pfW2RoomWater
+lbz r0, 47(r3)
+cmpwi r0, 67
+bne pfW2RoomWater
+lbz r0, 48(r3)
+cmpwi r0, 111
+bne pfW2RoomWater
+lbz r0, 49(r3)
+cmpwi r0, 117
+bne pfW2RoomWater
+lbz r0, 50(r3)
+cmpwi r0, 114
+bne pfW2RoomWater
+lbz r0, 51(r3)
+cmpwi r0, 115
+bne pfW2RoomWater
+lbz r0, 52(r3)
+cmpwi r0, 101
+bne pfW2RoomWater
+lbz r0, 53(r3)
+cmpwi r0, 83
+bne pfW2RoomWater
+lbz r0, 54(r3)
+cmpwi r0, 101
+bne pfW2RoomWater
+lbz r0, 55(r3)
+cmpwi r0, 108
+bne pfW2RoomWater
+lbz r0, 56(r3)
+cmpwi r0, 101
+bne pfW2RoomWater
+lbz r0, 57(r3)
+cmpwi r0, 99
+bne pfW2RoomWater
+lbz r0, 58(r3)
+cmpwi r0, 116
+bne pfW2RoomWater
+lbz r0, 59(r3)
+cmpwi r0, 85
+bne pfW2RoomWater
+lbz r0, 60(r3)
+cmpwi r0, 110
+bne pfW2RoomWater
+lbz r0, 61(r3)
+cmpwi r0, 100
+bne pfW2RoomWater
+lbz r0, 62(r3)
+cmpwi r0, 101
+bne pfW2RoomWater
+lbz r0, 63(r3)
+cmpwi r0, 114
+bne pfW2RoomWater
+lbz r0, 64(r3)
+cmpwi r0, 71
+bne pfW2RoomWater
+lbz r0, 65(r3)
+cmpwi r0, 114
+bne pfW2RoomWater
+lbz r0, 66(r3)
+cmpwi r0, 111
+bne pfW2RoomWater
+lbz r0, 67(r3)
+cmpwi r0, 117
+bne pfW2RoomWater
+lbz r0, 68(r3)
+cmpwi r0, 110
+bne pfW2RoomWater
+lbz r0, 69(r3)
+cmpwi r0, 100
+bne pfW2RoomWater
+lbz r0, 70(r3)
+cmpwi r0, 65
+bne pfW2RoomWater
+lbz r0, 71(r3)
+cmpwi r0, 0
+bne pfW2RoomWater
+b pfW2RoomPlayer
+pfW2RoomWater:
+lbz r0, 36(r3)
+cmpwi r0, 79
+bne pfW2RoomPass
+lbz r0, 37(r3)
+cmpwi r0, 98
+bne pfW2RoomPass
+lbz r0, 38(r3)
+cmpwi r0, 106
+bne pfW2RoomPass
+lbz r0, 39(r3)
+cmpwi r0, 101
+bne pfW2RoomPass
+lbz r0, 40(r3)
+cmpwi r0, 99
+bne pfW2RoomPass
+lbz r0, 41(r3)
+cmpwi r0, 116
+bne pfW2RoomPass
+lbz r0, 42(r3)
+cmpwi r0, 68
+bne pfW2RoomPass
+lbz r0, 43(r3)
+cmpwi r0, 97
+bne pfW2RoomPass
+lbz r0, 44(r3)
+cmpwi r0, 116
+bne pfW2RoomPass
+lbz r0, 45(r3)
+cmpwi r0, 97
+bne pfW2RoomPass
+lbz r0, 46(r3)
+cmpwi r0, 47
+bne pfW2RoomPass
+lbz r0, 47(r3)
+cmpwi r0, 67
+bne pfW2RoomPass
+lbz r0, 48(r3)
+cmpwi r0, 111
+bne pfW2RoomPass
+lbz r0, 49(r3)
+cmpwi r0, 117
+bne pfW2RoomPass
+lbz r0, 50(r3)
+cmpwi r0, 114
+bne pfW2RoomPass
+lbz r0, 51(r3)
+cmpwi r0, 115
+bne pfW2RoomPass
+lbz r0, 52(r3)
+cmpwi r0, 101
+bne pfW2RoomPass
+lbz r0, 53(r3)
+cmpwi r0, 83
+bne pfW2RoomPass
+lbz r0, 54(r3)
+cmpwi r0, 101
+bne pfW2RoomPass
+lbz r0, 55(r3)
+cmpwi r0, 108
+bne pfW2RoomPass
+lbz r0, 56(r3)
+cmpwi r0, 101
+bne pfW2RoomPass
+lbz r0, 57(r3)
+cmpwi r0, 99
+bne pfW2RoomPass
+lbz r0, 58(r3)
+cmpwi r0, 116
+bne pfW2RoomPass
+lbz r0, 59(r3)
+cmpwi r0, 87
+bne pfW2RoomPass
+lbz r0, 60(r3)
+cmpwi r0, 97
+bne pfW2RoomPass
+lbz r0, 61(r3)
+cmpwi r0, 118
+bne pfW2RoomPass
+lbz r0, 62(r3)
+cmpwi r0, 101
+bne pfW2RoomPass
+lbz r0, 63(r3)
+cmpwi r0, 85
+bne pfW2RoomPass
+lbz r0, 64(r3)
+cmpwi r0, 110
+bne pfW2RoomPass
+lbz r0, 65(r3)
+cmpwi r0, 100
+bne pfW2RoomPass
+lbz r0, 66(r3)
+cmpwi r0, 101
+bne pfW2RoomPass
+lbz r0, 67(r3)
+cmpwi r0, 114
+bne pfW2RoomPass
+lbz r0, 68(r3)
+cmpwi r0, 71
+bne pfW2RoomPass
+lbz r0, 69(r3)
+cmpwi r0, 114
+bne pfW2RoomPass
+lbz r0, 70(r3)
+cmpwi r0, 111
+bne pfW2RoomPass
+lbz r0, 71(r3)
+cmpwi r0, 117
+bne pfW2RoomPass
+lbz r0, 72(r3)
+cmpwi r0, 110
+bne pfW2RoomPass
+lbz r0, 73(r3)
+cmpwi r0, 100
+bne pfW2RoomPass
+lbz r0, 74(r3)
+cmpwi r0, 0
+bne pfW2RoomPass
+pfW2RoomPlayer:
+lwz r8, 20(r12)
+cmpwi r8, 0
+beq pfW2RoomHide
+lwz r8, 0xF0(r8)
+cmpwi r8, 0
+beq pfW2RoomHide
+lwz r8, 0x28(r8)
+cmpwi r8, 0
+beq pfW2RoomHide
+lwz r11, 0(r8)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x47C3
+ori r0, r0, 0x5000
+cmplw r11, r0
+bgt pfW2RoomHide
+lwz r11, 4(r8)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x47C3
+ori r0, r0, 0x5000
+cmplw r11, r0
+bgt pfW2RoomHide
+lwz r11, 8(r8)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x47C3
+ori r0, r0, 0x5000
+cmplw r11, r0
+bgt pfW2RoomHide
+lwz r11, 0(r8)
+lis r0, 0x466A
+ori r0, r0, 0x6000
+cmplw r11, r0
+blt pfW2RoomHide
+lis r0, 0x4690
+ori r0, r0, 0x8800
+cmplw r11, r0
+bgt pfW2RoomHide
+lwz r11, 4(r8)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x45BB
+ori r0, r0, 0x8000
+cmplw r11, r0
+bgt pfW2RoomHide
+lwz r11, 8(r8)
+cmpwi r11, 0
+bge pfW2RoomHide
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x458C
+ori r0, r0, 0xA000
+cmplw r11, r0
+blt pfW2RoomHide
+lis r0, 0x4614
+ori r0, r0, 0x7000
+cmplw r11, r0
+bgt pfW2RoomHide
+b pfW2RoomPass
+pfW2RoomHide:
+li r3, 0
+b pfGateDone
+pfW2RoomPass:
 
-pfPipeActorHook:
+lwz r0, 8(r12)
+cmpwi r0, 0
+beq pfWorldOneAttachments
+lbz r0, 36(r3)
+cmpwi r0, 79
+bne pfOtherModel
+lbz r0, 37(r3)
+cmpwi r0, 98
+bne pfOtherModel
+lbz r0, 38(r3)
+cmpwi r0, 106
+bne pfOtherModel
+lbz r0, 39(r3)
+cmpwi r0, 101
+bne pfOtherModel
+lbz r0, 40(r3)
+cmpwi r0, 99
+bne pfOtherModel
+lbz r0, 41(r3)
+cmpwi r0, 116
+bne pfOtherModel
+lbz r0, 42(r3)
+cmpwi r0, 68
+bne pfOtherModel
+lbz r0, 43(r3)
+cmpwi r0, 97
+bne pfOtherModel
+lbz r0, 44(r3)
+cmpwi r0, 116
+bne pfOtherModel
+lbz r0, 45(r3)
+cmpwi r0, 97
+bne pfOtherModel
+lbz r0, 46(r3)
+cmpwi r0, 47
+bne pfOtherModel
+lbz r0, 47(r3)
+cmpwi r0, 67
+bne pfOtherModel
+lbz r0, 48(r3)
+cmpwi r0, 111
+bne pfOtherModel
+lbz r0, 49(r3)
+cmpwi r0, 117
+bne pfOtherModel
+lbz r0, 50(r3)
+cmpwi r0, 114
+bne pfOtherModel
+lbz r0, 51(r3)
+cmpwi r0, 115
+bne pfOtherModel
+lbz r0, 52(r3)
+cmpwi r0, 101
+bne pfOtherModel
+lbz r0, 53(r3)
+cmpwi r0, 83
+bne pfOtherModel
+lbz r0, 54(r3)
+cmpwi r0, 101
+bne pfOtherModel
+lbz r0, 55(r3)
+cmpwi r0, 108
+bne pfOtherModel
+lbz r0, 56(r3)
+cmpwi r0, 101
+bne pfOtherModel
+lbz r0, 57(r3)
+cmpwi r0, 99
+bne pfOtherModel
+lbz r0, 58(r3)
+cmpwi r0, 116
+bne pfOtherModel
+lbz r0, 59(r3)
+cmpwi r0, 87
+bne pfOtherModel
+lbz r0, 60(r3)
+cmpwi r0, 83
+bne pfOtherModel
+lbz r0, 61(r3)
+cmpwi r0, 0
+bne pfOtherModel
+cmplwi r4, 13
+bgt pfGateDone
+lwz r8, 0(r3)
+lhz r0, 0x14(r8)
+cmpwi r0, 14
+bne pfGateDone
+lwz r8, 0x1C(r8)
+mulli r9, r4, 48
+add r8, r8, r9
+lwz r8, 0(r8)
+lwz r0, 0(r8)
+lis r9, 0x4653
+ori r9, r9, 0x4850
+cmpw r0, r9
+bne pfGateDone
+lhz r0, 12(r8)
+cmpw r0, r4
+bne pfGateDone
+lwz r9, 0x24(r8)
+cmpwi r9, 0
+beq pfGateDone
+addi r8, r8, 0x24
+add r8, r8, r9
+lwz r0, 0(r8)
+cmpwi r0, 4
+bne pfGateDone
+lwz r0, 4(r8)
+cmpwi r0, 4
+bne pfGateDone
+lwz r0, 0x18(r8)
+cmpwi r0, 0
+bne pfGateDone
+lis r9, pfRanges@ha
+addi r9, r9, pfRanges@l
+mulli r10, r4, 72
+add r9, r9, r10
+lwz r0, 0(r9)
+lwz r10, 8(r8)
+cmpw r0, r10
+bne pfGateDone
+lwz r0, 4(r9)
+lhz r10, 12(r8)
+cmpw r0, r10
+bne pfGateDone
+stw r8, 24(r12)
+stw r4, 28(r12)
+b pfGateDone
+pfOtherModel:
+lbz r0, 36(r3)
+cmpwi r0, 79
+bne pfPrefix0Next
+lbz r0, 37(r3)
+cmpwi r0, 98
+bne pfPrefix0Next
+lbz r0, 38(r3)
+cmpwi r0, 106
+bne pfPrefix0Next
+lbz r0, 39(r3)
+cmpwi r0, 101
+bne pfPrefix0Next
+lbz r0, 40(r3)
+cmpwi r0, 99
+bne pfPrefix0Next
+lbz r0, 41(r3)
+cmpwi r0, 116
+bne pfPrefix0Next
+lbz r0, 42(r3)
+cmpwi r0, 68
+bne pfPrefix0Next
+lbz r0, 43(r3)
+cmpwi r0, 97
+bne pfPrefix0Next
+lbz r0, 44(r3)
+cmpwi r0, 116
+bne pfPrefix0Next
+lbz r0, 45(r3)
+cmpwi r0, 97
+bne pfPrefix0Next
+lbz r0, 46(r3)
+cmpwi r0, 47
+bne pfPrefix0Next
+lbz r0, 47(r3)
+cmpwi r0, 67
+bne pfPrefix0Next
+lbz r0, 48(r3)
+cmpwi r0, 111
+bne pfPrefix0Next
+lbz r0, 49(r3)
+cmpwi r0, 117
+bne pfPrefix0Next
+lbz r0, 50(r3)
+cmpwi r0, 114
+bne pfPrefix0Next
+lbz r0, 51(r3)
+cmpwi r0, 115
+bne pfPrefix0Next
+lbz r0, 52(r3)
+cmpwi r0, 101
+bne pfPrefix0Next
+lbz r0, 53(r3)
+cmpwi r0, 83
+bne pfPrefix0Next
+lbz r0, 54(r3)
+cmpwi r0, 101
+bne pfPrefix0Next
+lbz r0, 55(r3)
+cmpwi r0, 108
+bne pfPrefix0Next
+lbz r0, 56(r3)
+cmpwi r0, 101
+bne pfPrefix0Next
+lbz r0, 57(r3)
+cmpwi r0, 99
+bne pfPrefix0Next
+lbz r0, 58(r3)
+cmpwi r0, 116
+bne pfPrefix0Next
+b pfObjectPosition
+pfPrefix0Next:
+lbz r0, 36(r3)
+cmpwi r0, 79
+bne pfPrefix1Next
+lbz r0, 37(r3)
+cmpwi r0, 98
+bne pfPrefix1Next
+lbz r0, 38(r3)
+cmpwi r0, 106
+bne pfPrefix1Next
+lbz r0, 39(r3)
+cmpwi r0, 101
+bne pfPrefix1Next
+lbz r0, 40(r3)
+cmpwi r0, 99
+bne pfPrefix1Next
+lbz r0, 41(r3)
+cmpwi r0, 116
+bne pfPrefix1Next
+lbz r0, 42(r3)
+cmpwi r0, 68
+bne pfPrefix1Next
+lbz r0, 43(r3)
+cmpwi r0, 97
+bne pfPrefix1Next
+lbz r0, 44(r3)
+cmpwi r0, 116
+bne pfPrefix1Next
+lbz r0, 45(r3)
+cmpwi r0, 97
+bne pfPrefix1Next
+lbz r0, 46(r3)
+cmpwi r0, 47
+bne pfPrefix1Next
+lbz r0, 47(r3)
+cmpwi r0, 77
+bne pfPrefix1Next
+lbz r0, 48(r3)
+cmpwi r0, 105
+bne pfPrefix1Next
+lbz r0, 49(r3)
+cmpwi r0, 110
+bne pfPrefix1Next
+lbz r0, 50(r3)
+cmpwi r0, 105
+bne pfPrefix1Next
+lbz r0, 51(r3)
+cmpwi r0, 97
+bne pfPrefix1Next
+lbz r0, 52(r3)
+cmpwi r0, 116
+bne pfPrefix1Next
+lbz r0, 53(r3)
+cmpwi r0, 117
+bne pfPrefix1Next
+lbz r0, 54(r3)
+cmpwi r0, 114
+bne pfPrefix1Next
+lbz r0, 55(r3)
+cmpwi r0, 101
+bne pfPrefix1Next
+b pfObjectPosition
+pfPrefix1Next:
+lbz r0, 36(r3)
+cmpwi r0, 79
+bne pfPrefix2Next
+lbz r0, 37(r3)
+cmpwi r0, 98
+bne pfPrefix2Next
+lbz r0, 38(r3)
+cmpwi r0, 106
+bne pfPrefix2Next
+lbz r0, 39(r3)
+cmpwi r0, 101
+bne pfPrefix2Next
+lbz r0, 40(r3)
+cmpwi r0, 99
+bne pfPrefix2Next
+lbz r0, 41(r3)
+cmpwi r0, 116
+bne pfPrefix2Next
+lbz r0, 42(r3)
+cmpwi r0, 68
+bne pfPrefix2Next
+lbz r0, 43(r3)
+cmpwi r0, 97
+bne pfPrefix2Next
+lbz r0, 44(r3)
+cmpwi r0, 116
+bne pfPrefix2Next
+lbz r0, 45(r3)
+cmpwi r0, 97
+bne pfPrefix2Next
+lbz r0, 46(r3)
+cmpwi r0, 47
+bne pfPrefix2Next
+lbz r0, 47(r3)
+cmpwi r0, 67
+bne pfPrefix2Next
+lbz r0, 48(r3)
+cmpwi r0, 111
+bne pfPrefix2Next
+lbz r0, 49(r3)
+cmpwi r0, 97
+bne pfPrefix2Next
+lbz r0, 50(r3)
+cmpwi r0, 115
+bne pfPrefix2Next
+lbz r0, 51(r3)
+cmpwi r0, 116
+bne pfPrefix2Next
+lbz r0, 52(r3)
+cmpwi r0, 101
+bne pfPrefix2Next
+lbz r0, 53(r3)
+cmpwi r0, 114
+bne pfPrefix2Next
+lbz r0, 54(r3)
+cmpwi r0, 83
+bne pfPrefix2Next
+lbz r0, 55(r3)
+cmpwi r0, 116
+bne pfPrefix2Next
+lbz r0, 56(r3)
+cmpwi r0, 97
+bne pfPrefix2Next
+lbz r0, 57(r3)
+cmpwi r0, 114
+bne pfPrefix2Next
+b pfObjectPosition
+pfPrefix2Next:
+lbz r0, 36(r3)
+cmpwi r0, 79
+bne pfPrefix3Next
+lbz r0, 37(r3)
+cmpwi r0, 98
+bne pfPrefix3Next
+lbz r0, 38(r3)
+cmpwi r0, 106
+bne pfPrefix3Next
+lbz r0, 39(r3)
+cmpwi r0, 101
+bne pfPrefix3Next
+lbz r0, 40(r3)
+cmpwi r0, 99
+bne pfPrefix3Next
+lbz r0, 41(r3)
+cmpwi r0, 116
+bne pfPrefix3Next
+lbz r0, 42(r3)
+cmpwi r0, 68
+bne pfPrefix3Next
+lbz r0, 43(r3)
+cmpwi r0, 97
+bne pfPrefix3Next
+lbz r0, 44(r3)
+cmpwi r0, 116
+bne pfPrefix3Next
+lbz r0, 45(r3)
+cmpwi r0, 97
+bne pfPrefix3Next
+lbz r0, 46(r3)
+cmpwi r0, 47
+bne pfPrefix3Next
+lbz r0, 47(r3)
+cmpwi r0, 84
+bne pfPrefix3Next
+lbz r0, 48(r3)
+cmpwi r0, 105
+bne pfPrefix3Next
+lbz r0, 49(r3)
+cmpwi r0, 99
+bne pfPrefix3Next
+lbz r0, 50(r3)
+cmpwi r0, 111
+bne pfPrefix3Next
+b pfObjectPosition
+pfPrefix3Next:
+b pfGateDone
+pfObjectPosition:
+addi r8, r3, 36
+li r9, 64
+pfNameEnd:
+lbz r0, 0(r8)
+cmpwi r0, 0
+beq pfHaveNameEnd
+addi r8, r8, 1
+addi r9, r9, -1
+cmpwi r9, 0
+bgt pfNameEnd
+b pfGateDone
+pfHaveNameEnd:
+addi r8, r8, 4
+rlwinm r8, r8, 0, 0, 29
+lwz r8, 28(r8)
+lis r9, 0x46AB
+ori r9, r9, 0xE000
+cmplw r8, r9
+blt pfGateDone
+lis r9, 0x470E
+ori r9, r9, 0x9400
+cmplw r8, r9
+bgt pfGateDone
+lis r9, 0x46D0
+ori r9, r9, 0x3400
+cmplw r8, r9
+blt pfObjectLower
+lis r9, 0x46F7
+ori r9, r9, 0xDA00
+cmplw r8, r9
+blt pfObjectMiddle
+li r8, 3
+b pfObjectCompare
+pfObjectLower:
+li r8, 1
+b pfObjectCompare
+pfObjectMiddle:
+li r8, 2
+pfObjectCompare:
+lwz r0, 8(r12)
+cmpw r0, r8
+beq pfGateDone
+lwz r9, 32(r12)
+addi r9, r9, 1
+stw r9, 32(r12)
+li r3, 0
+b pfGateDone
+pfWorldOneAttachments:
+; W1 node/rail Y range is -275..20; its pipe parts are all Y=120.
+; Only distant elevated road/pipe models qualify, never clouds or scenery.
+lis r9, mrSceneClass@ha
+lwz r9, mrSceneClass@l(r9)
+lis r8, 0x1027
+ori r8, r8, 0xF388
+cmpw r9, r8
+bne pfGateDone
+lwz r9, 12(r12)
+cmpwi r9, 1
+bne pfGateDone
+lbz r0, 36(r3)
+cmpwi r0, 79
+bne pfW1Road
+lbz r0, 37(r3)
+cmpwi r0, 98
+bne pfW1Road
+lbz r0, 38(r3)
+cmpwi r0, 106
+bne pfW1Road
+lbz r0, 39(r3)
+cmpwi r0, 101
+bne pfW1Road
+lbz r0, 40(r3)
+cmpwi r0, 99
+bne pfW1Road
+lbz r0, 41(r3)
+cmpwi r0, 116
+bne pfW1Road
+lbz r0, 42(r3)
+cmpwi r0, 68
+bne pfW1Road
+lbz r0, 43(r3)
+cmpwi r0, 97
+bne pfW1Road
+lbz r0, 44(r3)
+cmpwi r0, 116
+bne pfW1Road
+lbz r0, 45(r3)
+cmpwi r0, 97
+bne pfW1Road
+lbz r0, 46(r3)
+cmpwi r0, 47
+bne pfW1Road
+lbz r0, 47(r3)
+cmpwi r0, 82
+bne pfW1Road
+lbz r0, 48(r3)
+cmpwi r0, 111
+bne pfW1Road
+lbz r0, 49(r3)
+cmpwi r0, 117
+bne pfW1Road
+lbz r0, 50(r3)
+cmpwi r0, 116
+bne pfW1Road
+lbz r0, 51(r3)
+cmpwi r0, 101
+bne pfW1Road
+lbz r0, 52(r3)
+cmpwi r0, 68
+bne pfW1Road
+lbz r0, 53(r3)
+cmpwi r0, 111
+bne pfW1Road
+lbz r0, 54(r3)
+cmpwi r0, 107
+bne pfW1Road
+lbz r0, 55(r3)
+cmpwi r0, 97
+bne pfW1Road
+lbz r0, 56(r3)
+cmpwi r0, 110
+bne pfW1Road
+b pfW1Position
+pfW1Road:
+lbz r0, 36(r3)
+cmpwi r0, 79
+bne pfGateDone
+lbz r0, 37(r3)
+cmpwi r0, 98
+bne pfGateDone
+lbz r0, 38(r3)
+cmpwi r0, 106
+bne pfGateDone
+lbz r0, 39(r3)
+cmpwi r0, 101
+bne pfGateDone
+lbz r0, 40(r3)
+cmpwi r0, 99
+bne pfGateDone
+lbz r0, 41(r3)
+cmpwi r0, 116
+bne pfGateDone
+lbz r0, 42(r3)
+cmpwi r0, 68
+bne pfGateDone
+lbz r0, 43(r3)
+cmpwi r0, 97
+bne pfGateDone
+lbz r0, 44(r3)
+cmpwi r0, 116
+bne pfGateDone
+lbz r0, 45(r3)
+cmpwi r0, 97
+bne pfGateDone
+lbz r0, 46(r3)
+cmpwi r0, 47
+bne pfGateDone
+lbz r0, 47(r3)
+cmpwi r0, 67
+bne pfGateDone
+lbz r0, 48(r3)
+cmpwi r0, 111
+bne pfGateDone
+lbz r0, 49(r3)
+cmpwi r0, 117
+bne pfGateDone
+lbz r0, 50(r3)
+cmpwi r0, 114
+bne pfGateDone
+lbz r0, 51(r3)
+cmpwi r0, 115
+bne pfGateDone
+lbz r0, 52(r3)
+cmpwi r0, 101
+bne pfGateDone
+lbz r0, 53(r3)
+cmpwi r0, 83
+bne pfGateDone
+lbz r0, 54(r3)
+cmpwi r0, 101
+bne pfGateDone
+lbz r0, 55(r3)
+cmpwi r0, 108
+bne pfGateDone
+lbz r0, 56(r3)
+cmpwi r0, 101
+bne pfGateDone
+lbz r0, 57(r3)
+cmpwi r0, 99
+bne pfGateDone
+lbz r0, 58(r3)
+cmpwi r0, 116
+bne pfGateDone
+lbz r0, 59(r3)
+cmpwi r0, 82
+bne pfGateDone
+lbz r0, 60(r3)
+cmpwi r0, 111
+bne pfGateDone
+lbz r0, 61(r3)
+cmpwi r0, 97
+bne pfGateDone
+lbz r0, 62(r3)
+cmpwi r0, 100
+bne pfGateDone
+pfW1Position:
+addi r8, r3, 36
+li r9, 64
+pfW1NameEnd:
+lbz r0, 0(r8)
+cmpwi r0, 0
+beq pfW1HaveName
+addi r8, r8, 1
+addi r9, r9, -1
+cmpwi r9, 0
+bgt pfW1NameEnd
+b pfGateDone
+pfW1HaveName:
+addi r8, r8, 4
+rlwinm r8, r8, 0, 0, 29
+lwz r8, 28(r8)
+lis r9, 0x44FA ; 2000.0: generous separation from all W1 road/pipe placements
+cmplw r8, r9
+blt pfGateDone
+lis r9, 0x470E
+ori r9, r9, 0x9400 ; 36500.0: unknown/nonfinite positions pass
+cmplw r8, r9
+bgt pfGateDone
+lwz r9, 56(r12)
+addi r9, r9, 1
+stw r9, 56(r12)
+li r3, 0
+pfGateDone:
+lwz r4, 8(r1)
+lwz r5, 12(r1)
+lwz r6, 16(r1)
+lwz r7, 20(r1)
+lwz r8, 24(r1)
+lwz r9, 28(r1)
+lwz r10, 32(r1)
+lwz r11, 36(r1)
+lwz r12, 40(r1)
+addi r1, r1, 0x40
+blr
+pfDraw:
+stwu r1, -0x80(r1)
+mflr r0
+stw r0, 0x84(r1)
+stw r3, 8(r1)
+stw r4, 12(r1)
+stw r5, 16(r1)
+stw r6, 20(r1)
+stw r7, 24(r1)
+stw r8, 28(r1)
+stw r20, 32(r1)
+stw r21, 36(r1)
+stw r22, 40(r1)
+stw r23, 44(r1)
+stw r24, 48(r1)
+stw r25, 52(r1)
+stw r26, 56(r1)
+stw r27, 60(r1)
+lis r12, pfState@ha
+addi r12, r12, pfState@l
+lwz r9, 24(r12)
+cmpw r9, r30
+bne pfDrawOriginal
+lwz r25, 8(r12)
+cmplwi r25, 1
+blt pfDrawOriginal
+cmplwi r25, 3
+bgt pfDrawOriginal
+lwz r9, 28(r12)
+cmplwi r9, 13
+bgt pfDrawOriginal
+cmpwi r3, 4
+bne pfDrawOriginal
+cmpwi r5, 4
+bne pfDrawOriginal
+cmpwi r7, 0
+bne pfDrawOriginal
+cmplwi r4, 0
+beq pfDrawOriginal
+andi. r0, r31, 1
+bne pfDrawOriginal
+lis r20, pfRanges@ha
+addi r20, r20, pfRanges@l
+mulli r9, r9, 72
+add r20, r20, r9
+srwi r22, r31, 1
+add r23, r22, r4
+cmplw r23, r22
+blt pfDrawOriginal
+lwz r0, 0(r20)
+cmplw r23, r0
+bgt pfDrawOriginal
+subf r24, r31, r6
+lwz r21, 8(r20)
+addi r20, r20, 12
+pfDrawLoop:
+lwz r0, 0(r20)
+cmpw r0, r25
+bne pfDrawNext
+lwz r26, 4(r20)
+lwz r27, 8(r20)
+add r27, r26, r27
+cmplw r26, r22
+bge pfDrawLoReady
+mr r26, r22
+pfDrawLoReady:
+cmplw r27, r23
+ble pfDrawHiReady
+mr r27, r23
+pfDrawHiReady:
+cmplw r26, r27
+bge pfDrawNext
+lwz r3, 8(r1)
+subf r4, r26, r27
+lwz r5, 16(r1)
+slwi r6, r26, 1
+add r6, r6, r24
+lwz r7, 24(r1)
+lwz r8, 28(r1)
+bl import.gx2.GX2DrawIndexedEx
+pfDrawNext:
+addi r20, r20, 12
+addi r21, r21, -1
+cmpwi r21, 0
+bgt pfDrawLoop
+lis r12, pfState@ha
+addi r12, r12, pfState@l
+lwz r11, 36(r12)
+addi r11, r11, 1
+stw r11, 36(r12)
+b pfDrawDone
+pfDrawOriginal:
+lwz r3, 8(r1)
+lwz r4, 12(r1)
+lwz r5, 16(r1)
+lwz r6, 20(r1)
+lwz r7, 24(r1)
+lwz r8, 28(r1)
+bl import.gx2.GX2DrawIndexedEx
+pfDrawDone:
+lwz r20, 32(r1)
+lwz r21, 36(r1)
+lwz r22, 40(r1)
+lwz r23, 44(r1)
+lwz r24, 48(r1)
+lwz r25, 52(r1)
+lwz r26, 56(r1)
+lwz r27, 60(r1)
+lwz r0, 0x84(r1)
+mtlr r0
+addi r1, r1, 0x80
+blr
+pfState:
+.int 0x50464C54
+.int 1
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+pfRanges:
+.int 6936
+.int 15
+.int 1
+.int 2
+.int 0
+.int 6936
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 10845
+.int 14
+.int 1
+.int 2
+.int 0
+.int 10845
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 7020
+.int 17
+.int 1
+.int 1
+.int 0
+.int 7020
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 9894
+.int 16
+.int 1
+.int 3
+.int 0
+.int 9894
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 16440
+.int 20
+.int 2
+.int 2
+.int 0
+.int 12408
+.int 1
+.int 12408
+.int 4032
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 7524
+.int 15
+.int 5
+.int 2
+.int 0
+.int 12
+.int 1
+.int 12
+.int 1737
+.int 2
+.int 1749
+.int 201
+.int 1
+.int 1950
+.int 99
+.int 2
+.int 2049
+.int 5475
+.int 8496
+.int 24
+.int 1
+.int 2
+.int 0
+.int 8496
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 7824
+.int 16
+.int 1
+.int 1
+.int 0
+.int 7824
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 13272
+.int 22
+.int 1
+.int 2
+.int 0
+.int 13272
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 11520
+.int 15
+.int 1
+.int 3
+.int 0
+.int 11520
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 7020
+.int 17
+.int 1
+.int 1
+.int 0
+.int 7020
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 9894
+.int 16
+.int 1
+.int 3
+.int 0
+.int 9894
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 6936
+.int 15
+.int 1
+.int 2
+.int 0
+.int 6936
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 10845
+.int 14
+.int 1
+.int 2
+.int 0
+.int 10845
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+pfParticleFill:
+stwu r1, -0x30(r1)
+mflr r0
+stw r0, 0x34(r1)
+stw r3, 8(r1)
+stw r4, 12(r1)
+bl pfParticleFillOriginal
+lis r12, pfParticleDebug@ha
+addi r12, r12, pfParticleDebug@l
+lwz r11, 0(r12)
+addi r11, r11, 1
+stw r11, 0(r12)
+lwz r10, 12(r1)
+lwz r10, 0x12C(r10)
+stw r10, 4(r12)
+lwz r9, 0x130(r10)
+stw r9, 8(r12)
+lwz r11, 8(r1)
+lwz r11, 4(r11)
+stw r11, 12(r12)
+lis r6, pfParticleCensus@ha
+addi r6, r6, pfParticleCensus@l
+srwi r8, r9, 4
+rlwinm r8, r8, 6, 18, 25
+li r7, 8
+pfCensusProbe:
+add r5, r6, r8
+lwz r0, 0(r5)
+cmpw r0, r9
+beq pfCensusRecord
+cmpwi r0, 0
+beq pfCensusRecord
+addi r8, r8, 64
+rlwinm r8, r8, 0, 18, 25
+addi r7, r7, -1
+cmpwi r7, 0
+bgt pfCensusProbe
+lis r12, pfParticleDebug@ha
+addi r12, r12, pfParticleDebug@l
+lwz r4, 48(r12)
+addi r4, r4, 1
+stw r4, 48(r12)
+b pfCensusDone
+pfCensusRecord:
+stw r9, 0(r5)
+lwz r4, 4(r5)
+addi r4, r4, 1
+stw r4, 4(r5)
+lis r11, mrSceneClass@ha
+lwz r11, mrSceneClass@l(r11)
+stw r11, 16(r5)
+lis r0, 0x1027
+ori r0, r0, 0xF388
+cmpw r11, r0
+bne pfCensusNotMap
+lwz r4, 8(r5)
+addi r4, r4, 1
+stw r4, 8(r5)
+b pfCensusMetadata
+pfCensusNotMap:
+lwz r4, 12(r5)
+addi r4, r4, 1
+stw r4, 12(r5)
+pfCensusMetadata:
+lwz r0, 0(r9)
+stw r0, 20(r5)
+lwz r0, 4(r9)
+stw r0, 24(r5)
+lwz r0, 0x38(r9)
+stw r0, 28(r5)
+lwz r0, 0x2E8(r9)
+stw r0, 32(r5)
+lwz r0, 0x3C(r9)
+stw r0, 52(r5)
+lwz r4, 12(r1)
+stw r4, 60(r5)
+lwz r0, 0x18(r4)
+stw r0, 36(r5)
+lwz r0, 0x12C(r4)
+stw r0, 56(r5)
+lwz r4, 8(r1)
+lwz r0, 4(r4)
+stw r0, 40(r5)
+lis r12, pfState@ha
+addi r12, r12, pfState@l
+lwz r0, 12(r12)
+stw r0, 44(r5)
+lwz r0, 8(r12)
+stw r0, 48(r5)
+pfCensusDone:
+lis r11, mrSceneClass@ha
+lwz r11, mrSceneClass@l(r11)
+lis r9, 0x1027
+ori r9, r9, 0xF388
+cmpw r11, r9
+beq pfCensusGuardPassed
+lis r12, pfParticleDebug@ha
+addi r12, r12, pfParticleDebug@l
+lwz r4, 44(r12)
+addi r4, r4, 1
+stw r4, 44(r12)
+b pfParticleDone
+pfCensusGuardPassed:
+lis r12, pfParticleDebug@ha
+addi r12, r12, pfParticleDebug@l
+lwz r4, 40(r12)
+addi r4, r4, 1
+stw r4, 40(r12)
+; Particle +12C owns the emitter, independent of the caller's GPR allocation.
+lis r12, pfState@ha
+addi r12, r12, pfState@l
+lwz r8, 8(r12)
+lwz r10, 12(r1)
+lwz r10, 0x12C(r10)
+lwz r9, 0x130(r10)
+cmpwi r9, 0
+beq pfParticleDone
+; Road Glow is independent from the model draw and has four definitions.
+lwz r11, 0x38(r9)
+cmplwi r11, 0x3F0C
+beq pfRoadGlow
+cmplwi r11, 0x3F11
+beq pfRoadPtcl
+cmplwi r11, 0x3F16
+beq pfRoadCore
+cmplwi r11, 0x3F1B
+beq pfRoadCore
+cmplwi r8, 1
+blt pfParticleDone
+cmplwi r8, 3
+bgt pfParticleDone
+; Three unique tuples in the verified EU-v0 effect resource.
+lwz r0, 0(r9)
+cmpwi r0, 0
+bne pfParticleDone
+lwz r0, 4(r9)
+lis r10, 0x0080
+cmpw r0, r10
+bne pfParticleDone
+lwz r10, 0x2E8(r9)
+lwz r11, 0x38(r9)
+cmpwi r10, 152
+beq pfParticleA
+cmpwi r10, 153
+beq pfParticleB
+cmpwi r10, 154
+bne pfParticleDone
+cmplwi r11, 0xA289
+bne pfParticleDone
+b pfParticlePosition
+pfParticleA:
+cmplwi r11, 0xA27D
+bne pfParticleDone
+b pfParticlePosition
+pfParticleB:
+cmplwi r11, 0xA283
+bne pfParticleDone
+pfParticlePosition:
+lis r11, pfParticleDebug@ha
+addi r11, r11, pfParticleDebug@l
+lwz r4, 16(r11)
+addi r4, r4, 1
+stw r4, 16(r11)
+stw r9, 24(r11)
+lwz r11, 40(r12)
+addi r11, r11, 1
+stw r11, 40(r12)
+; Classify FallPtcl in its primitive's local space, before native transform.
+; The verified source meshes lie at -8.40, 4790.73 and 10140.73.
+; 0254D070..0254D0F0 applies particle+104 to local +14/+18/+1C.
+lwz r9, 12(r1)
+lwz r10, 0x18(r9)
+lis r11, pfParticleDebug@ha
+addi r11, r11, pfParticleDebug@l
+stw r10, 28(r11)
+stw r10, 48(r12)
+lwz r11, 12(r1)
+lwz r11, 0x12C(r11)
+stw r11, 52(r12)
+cmpwi r10, 0
+bge pfParticlePositiveLocal
+rlwinm r10, r10, 0, 1, 31
+lis r11, 0x44FA ; permit local negative drift only down to -2000
+cmplw r10, r11
+bgt pfParticleDone
+b pfParticleLower
+pfParticlePositiveLocal:
+lis r11, 0x463F
+ori r11, r11, 0x6800 ; 12250; NaN/Inf and unknown positions pass
+cmplw r10, r11
+bgt pfParticleDone
+lis r11, 0x4516 ; 2400
+cmplw r10, r11
+blt pfParticleLower
+lis r11, 0x45E9
+ori r11, r11, 0x9800 ; 7475
+cmplw r10, r11
+blt pfParticleMiddle
+li r10, 3
+b pfParticleCompare
+pfRoadGlow:
+lwz r0, 0(r9)
+cmpwi r0, 1
+bne pfParticleDone
+lwz r0, 4(r9)
+lis r11, 0x0038
+cmpw r0, r11
+bne pfParticleDone
+b pfRoadIdentity
+pfRoadPtcl:
+lwz r0, 0(r9)
+cmpwi r0, 1
+bne pfParticleDone
+b pfRoadZeroFlags
+pfRoadCore:
+lwz r0, 0(r9)
+cmpwi r0, 0
+bne pfParticleDone
+pfRoadZeroFlags:
+lwz r0, 4(r9)
+cmpwi r0, 0
+bne pfParticleDone
+pfRoadIdentity:
+lwz r0, 0x2E8(r9)
+cmpwi r0, -1
+bne pfParticleDone
+lis r11, pfParticleDebug@ha
+addi r11, r11, pfParticleDebug@l
+lwz r4, 20(r11)
+addi r4, r4, 1
+stw r4, 20(r11)
+stw r9, 32(r11)
+lwz r11, 40(r12)
+addi r11, r11, 1
+stw r11, 40(r12)
+; Road effects follow their owner's position. Classify native world output.
+lwz r9, 8(r1)
+lwz r10, 4(r9)
+lis r11, pfParticleDebug@ha
+addi r11, r11, pfParticleDebug@l
+stw r10, 36(r11)
+stw r10, 48(r12)
+cmplwi r8, 1
+blt pfRoadWorldOne
+cmplwi r8, 3
+bgt pfParticleDone
+lis r11, 0x46AB
+ori r11, r11, 0xE000 ; 22000
+cmplw r10, r11
+blt pfParticleDone
+lis r11, 0x470E
+ori r11, r11, 0x9400 ; 36500
+cmplw r10, r11
+bgt pfParticleDone
+lis r11, 0x46D0
+ori r11, r11, 0x3400 ; 26650
+cmplw r10, r11
+blt pfParticleLower
+lis r11, 0x46F7
+ori r11, r11, 0xDA00 ; 31725
+cmplw r10, r11
+blt pfParticleMiddle
+li r10, 3
+b pfParticleCompare
+pfParticleLower:
+li r10, 1
+b pfParticleCompare
+pfParticleMiddle:
+li r10, 2
+pfParticleCompare:
+cmpw r10, r8
+beq pfParticleDone
+b pfParticleHide
+pfRoadWorldOne:
+lwz r11, 12(r12)
+cmpwi r11, 1
+bne pfParticleDone
+lis r11, 0x44FA ; same distant-attachment bound as the W1 model filter
+cmplw r10, r11
+blt pfParticleDone
+lis r11, 0x470E
+ori r11, r11, 0x9400
+cmplw r10, r11
+bgt pfParticleDone
+pfParticleHide:
+lwz r9, 8(r1)
+; Only this frame's 0xC0-byte GPU record. Scale xy and both colour alphas.
+li r0, 0
+stw r0, 0x10(r9)
+stw r0, 0x14(r9)
+stw r0, 0x2C(r9)
+stw r0, 0x3C(r9)
+lwz r11, 44(r12)
+addi r11, r11, 1
+stw r11, 44(r12)
+pfParticleDone:
+lwz r0, 0x34(r1)
+mtlr r0
+addi r1, r1, 0x30
+blr
+pfParticleDebug:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+pfParticleCensus:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+0x0254DF08 = pfParticleFillOriginal:
+0x02558F78 = bla pfParticleFill
+0x02548B3C = bla pfParticleFill
+0x0255C220 = bla pfParticleFill
+0x0255C2F8 = bla pfParticleFill
+pfPipeActor:
 stwu r1, -0x20(r1)
 mflr r0
 stw r0, 0x24(r1)
 lis r12, pfPipeState@ha
 addi r12, r12, pfPipeState@l
 lwz r0, 0(r12)
-stw r0, 8(r1)          ; save current pfPipeState on stack (callers can nest)
+stw r0, 8(r1)
 li r0, 0
-stw r0, 0(r12)          ; default: no block
+stw r0, 0(r12)
 lis r10, mrSceneClass@ha
 lwz r10, mrSceneClass@l(r10)
+; First-stage capture: a rescued remote bonus room has a large Black01
+; enclosure. Keep native visibility for this exact actor/model only; this
+; still permits the room when the game's own camera accepts it.
 lis r11, 0x1032
 ori r11, r11, 0x86DC
-cmpw r10, r11           ; only the bonus-room scene class carries this actor
-bne pfPipeActorCall
+cmpw r10, r11
+bne pfPipeMapScene
 lwz r9, 0(r3)
 cmpwi r9, 0
-beq pfPipeActorCall
+beq pfPipeCall
 lwz r11, 0(r9)
 lis r0, 0x1037
 ori r0, r0, 0x6518
-cmpw r11, r0            ; verify actor class vtable
-bne pfPipeActorCall
-lwz r9, 0x44(r9)        ; model at vtable+0x44
+cmpw r11, r0
+bne pfPipeCall
+lwz r9, 0x44(r9)
 cmpwi r9, 0
-beq pfPipeActorCall
-lwz r9, 4(r9)           ; resource name at model[4]
+beq pfPipeCall
+lwz r9, 4(r9)
 cmpwi r9, 0
-beq pfPipeActorCall
+beq pfPipeCall
 lbz r0, 0(r9)
-cmpwi r0, 69            ; 'E'
-bne pfPipeActorCall
+cmpwi r0, 69
+bne pfPipeCall
 lbz r0, 1(r9)
-cmpwi r0, 110           ; 'n'
-bne pfPipeActorCall
+cmpwi r0, 110
+bne pfPipeCall
 lbz r0, 2(r9)
-cmpwi r0, 116           ; 't'
-bne pfPipeActorCall
+cmpwi r0, 116
+bne pfPipeCall
 lbz r0, 3(r9)
-cmpwi r0, 101           ; 'e'
-bne pfPipeActorCall
+cmpwi r0, 101
+bne pfPipeCall
 lbz r0, 4(r9)
-cmpwi r0, 114           ; 'r'
-bne pfPipeActorCall
+cmpwi r0, 114
+bne pfPipeCall
 lbz r0, 5(r9)
-cmpwi r0, 67            ; 'C'
-bne pfPipeActorCall
+cmpwi r0, 67
+bne pfPipeCall
 lbz r0, 6(r9)
-cmpwi r0, 97            ; 'a'
-bne pfPipeActorCall
+cmpwi r0, 97
+bne pfPipeCall
 lbz r0, 7(r9)
-cmpwi r0, 116           ; 't'
-bne pfPipeActorCall
+cmpwi r0, 116
+bne pfPipeCall
 lbz r0, 8(r9)
-cmpwi r0, 77            ; 'M'
-bne pfPipeActorCall
+cmpwi r0, 77
+bne pfPipeCall
 lbz r0, 9(r9)
-cmpwi r0, 97            ; 'a'
-bne pfPipeActorCall
+cmpwi r0, 97
+bne pfPipeCall
 lbz r0, 10(r9)
-cmpwi r0, 114           ; 'r'
-bne pfPipeActorCall
+cmpwi r0, 114
+bne pfPipeCall
 lbz r0, 11(r9)
-cmpwi r0, 105           ; 'i'
-bne pfPipeActorCall
+cmpwi r0, 105
+bne pfPipeCall
 lbz r0, 12(r9)
-cmpwi r0, 111           ; 'o'
-bne pfPipeActorCall
+cmpwi r0, 111
+bne pfPipeCall
 lbz r0, 13(r9)
-cmpwi r0, 66            ; 'B'
-bne pfPipeActorCall
+cmpwi r0, 66
+bne pfPipeCall
 lbz r0, 14(r9)
-cmpwi r0, 111           ; 'o'
-bne pfPipeActorCall
+cmpwi r0, 111
+bne pfPipeCall
 lbz r0, 15(r9)
-cmpwi r0, 110           ; 'n'
-bne pfPipeActorCall
+cmpwi r0, 110
+bne pfPipeCall
 lbz r0, 16(r9)
-cmpwi r0, 117           ; 'u'
-bne pfPipeActorCall
+cmpwi r0, 117
+bne pfPipeCall
 lbz r0, 17(r9)
-cmpwi r0, 115           ; 's'
-bne pfPipeActorCall
+cmpwi r0, 115
+bne pfPipeCall
 lbz r0, 18(r9)
-cmpwi r0, 82            ; 'R'
-bne pfPipeActorCall
+cmpwi r0, 82
+bne pfPipeCall
 lbz r0, 19(r9)
-cmpwi r0, 111           ; 'o'
-bne pfPipeActorCall
+cmpwi r0, 111
+bne pfPipeCall
 lbz r0, 20(r9)
-cmpwi r0, 111           ; 'o'
-bne pfPipeActorCall
+cmpwi r0, 111
+bne pfPipeCall
 lbz r0, 21(r9)
-cmpwi r0, 109           ; 'm'
-bne pfPipeActorCall
+cmpwi r0, 109
+bne pfPipeCall
 lbz r0, 22(r9)
-cmpwi r0, 0             ; '\0'
-bne pfPipeActorCall
-; Found EnterCatMarioBonusRoom: block mrCull rescues for this draw.
-lis r12, pfPipeState@ha
-addi r12, r12, pfPipeState@l
+cmpwi r0, 0
+bne pfPipeCall
+b pfPipeFound
+pfPipeMapScene:
+lis r11, 0x1027
+ori r11, r11, 0xF388
+cmpw r10, r11
+bne pfPipeCall
+lwz r9, 0(r3)
+cmpwi r9, 0
+beq pfPipeCall
+lwz r10, 0(r9)
+; RouteDokan, CourseSelectRouteDokan, CourseSelectRouteDokan terminator.
+lis r11, 0x1030
+ori r11, r11, 0x5018
+cmpw r10, r11
+beq pfPipeFound
+lis r11, 0x1027
+ori r11, r11, 0xE918
+cmpw r10, r11
+beq pfPipeFound
+lis r11, 0x1027
+ori r11, r11, 0xEBF4
+cmpw r10, r11
+beq pfPipeFound
+; Generic parts: only a verified model-resource name qualifies.
+lwz r9, 0x44(r9)
+cmpwi r9, 0
+beq pfPipeCall
+lwz r9, 0(r9)
+cmpwi r9, 0
+beq pfPipeCall
+lwz r9, 8(r9)
+cmpwi r9, 0
+beq pfPipeCall
+lis r10, pfState@ha
+addi r10, r10, pfState@l
+lwz r10, 12(r10)
+cmpwi r10, 2
+bne pfPipeW1Names
+lbz r0, 36(r9)
+cmpwi r0, 79
+bne pfW2Families
+lbz r0, 37(r9)
+cmpwi r0, 98
+bne pfW2Families
+lbz r0, 38(r9)
+cmpwi r0, 106
+bne pfW2Families
+lbz r0, 39(r9)
+cmpwi r0, 101
+bne pfW2Families
+lbz r0, 40(r9)
+cmpwi r0, 99
+bne pfW2Families
+lbz r0, 41(r9)
+cmpwi r0, 116
+bne pfW2Families
+lbz r0, 42(r9)
+cmpwi r0, 68
+bne pfW2Families
+lbz r0, 43(r9)
+cmpwi r0, 97
+bne pfW2Families
+lbz r0, 44(r9)
+cmpwi r0, 116
+bne pfW2Families
+lbz r0, 45(r9)
+cmpwi r0, 97
+bne pfW2Families
+lbz r0, 46(r9)
+cmpwi r0, 47
+bne pfW2Families
+lbz r0, 47(r9)
+cmpwi r0, 82
+bne pfW2Families
+lbz r0, 48(r9)
+cmpwi r0, 111
+bne pfW2Families
+lbz r0, 49(r9)
+cmpwi r0, 117
+bne pfW2Families
+lbz r0, 50(r9)
+cmpwi r0, 116
+bne pfW2Families
+lbz r0, 51(r9)
+cmpwi r0, 101
+bne pfW2Families
+lbz r0, 52(r9)
+cmpwi r0, 68
+bne pfW2Families
+lbz r0, 53(r9)
+cmpwi r0, 111
+bne pfW2Families
+lbz r0, 54(r9)
+cmpwi r0, 107
+bne pfW2Families
+lbz r0, 55(r9)
+cmpwi r0, 97
+bne pfW2Families
+lbz r0, 56(r9)
+cmpwi r0, 110
+bne pfW2Families
+b pfPipeFound
+pfW2Families:
+lbz r0, 36(r9)
+cmpwi r0, 79
+bne pfW2NameNext0
+lbz r0, 37(r9)
+cmpwi r0, 98
+bne pfW2NameNext0
+lbz r0, 38(r9)
+cmpwi r0, 106
+bne pfW2NameNext0
+lbz r0, 39(r9)
+cmpwi r0, 101
+bne pfW2NameNext0
+lbz r0, 40(r9)
+cmpwi r0, 99
+bne pfW2NameNext0
+lbz r0, 41(r9)
+cmpwi r0, 116
+bne pfW2NameNext0
+lbz r0, 42(r9)
+cmpwi r0, 68
+bne pfW2NameNext0
+lbz r0, 43(r9)
+cmpwi r0, 97
+bne pfW2NameNext0
+lbz r0, 44(r9)
+cmpwi r0, 116
+bne pfW2NameNext0
+lbz r0, 45(r9)
+cmpwi r0, 97
+bne pfW2NameNext0
+lbz r0, 46(r9)
+cmpwi r0, 47
+bne pfW2NameNext0
+lbz r0, 47(r9)
+cmpwi r0, 67
+bne pfW2NameNext0
+lbz r0, 48(r9)
+cmpwi r0, 111
+bne pfW2NameNext0
+lbz r0, 49(r9)
+cmpwi r0, 117
+bne pfW2NameNext0
+lbz r0, 50(r9)
+cmpwi r0, 114
+bne pfW2NameNext0
+lbz r0, 51(r9)
+cmpwi r0, 115
+bne pfW2NameNext0
+lbz r0, 52(r9)
+cmpwi r0, 101
+bne pfW2NameNext0
+lbz r0, 53(r9)
+cmpwi r0, 83
+bne pfW2NameNext0
+lbz r0, 54(r9)
+cmpwi r0, 101
+bne pfW2NameNext0
+lbz r0, 55(r9)
+cmpwi r0, 108
+bne pfW2NameNext0
+lbz r0, 56(r9)
+cmpwi r0, 101
+bne pfW2NameNext0
+lbz r0, 57(r9)
+cmpwi r0, 99
+bne pfW2NameNext0
+lbz r0, 58(r9)
+cmpwi r0, 116
+bne pfW2NameNext0
+lbz r0, 59(r9)
+cmpwi r0, 82
+bne pfW2NameNext0
+lbz r0, 60(r9)
+cmpwi r0, 111
+bne pfW2NameNext0
+lbz r0, 61(r9)
+cmpwi r0, 97
+bne pfW2NameNext0
+lbz r0, 62(r9)
+cmpwi r0, 100
+bne pfW2NameNext0
+b pfW2NameEndStart
+pfW2NameNext0:
+lbz r0, 36(r9)
+cmpwi r0, 79
+bne pfW2NameNext1
+lbz r0, 37(r9)
+cmpwi r0, 98
+bne pfW2NameNext1
+lbz r0, 38(r9)
+cmpwi r0, 106
+bne pfW2NameNext1
+lbz r0, 39(r9)
+cmpwi r0, 101
+bne pfW2NameNext1
+lbz r0, 40(r9)
+cmpwi r0, 99
+bne pfW2NameNext1
+lbz r0, 41(r9)
+cmpwi r0, 116
+bne pfW2NameNext1
+lbz r0, 42(r9)
+cmpwi r0, 68
+bne pfW2NameNext1
+lbz r0, 43(r9)
+cmpwi r0, 97
+bne pfW2NameNext1
+lbz r0, 44(r9)
+cmpwi r0, 116
+bne pfW2NameNext1
+lbz r0, 45(r9)
+cmpwi r0, 97
+bne pfW2NameNext1
+lbz r0, 46(r9)
+cmpwi r0, 47
+bne pfW2NameNext1
+lbz r0, 47(r9)
+cmpwi r0, 67
+bne pfW2NameNext1
+lbz r0, 48(r9)
+cmpwi r0, 111
+bne pfW2NameNext1
+lbz r0, 49(r9)
+cmpwi r0, 117
+bne pfW2NameNext1
+lbz r0, 50(r9)
+cmpwi r0, 114
+bne pfW2NameNext1
+lbz r0, 51(r9)
+cmpwi r0, 115
+bne pfW2NameNext1
+lbz r0, 52(r9)
+cmpwi r0, 101
+bne pfW2NameNext1
+lbz r0, 53(r9)
+cmpwi r0, 83
+bne pfW2NameNext1
+lbz r0, 54(r9)
+cmpwi r0, 101
+bne pfW2NameNext1
+lbz r0, 55(r9)
+cmpwi r0, 108
+bne pfW2NameNext1
+lbz r0, 56(r9)
+cmpwi r0, 101
+bne pfW2NameNext1
+lbz r0, 57(r9)
+cmpwi r0, 99
+bne pfW2NameNext1
+lbz r0, 58(r9)
+cmpwi r0, 116
+bne pfW2NameNext1
+lbz r0, 59(r9)
+cmpwi r0, 80
+bne pfW2NameNext1
+lbz r0, 60(r9)
+cmpwi r0, 111
+bne pfW2NameNext1
+lbz r0, 61(r9)
+cmpwi r0, 105
+bne pfW2NameNext1
+lbz r0, 62(r9)
+cmpwi r0, 110
+bne pfW2NameNext1
+lbz r0, 63(r9)
+cmpwi r0, 116
+bne pfW2NameNext1
+b pfW2NameEndStart
+pfW2NameNext1:
+lbz r0, 36(r9)
+cmpwi r0, 79
+bne pfW2NameNext2
+lbz r0, 37(r9)
+cmpwi r0, 98
+bne pfW2NameNext2
+lbz r0, 38(r9)
+cmpwi r0, 106
+bne pfW2NameNext2
+lbz r0, 39(r9)
+cmpwi r0, 101
+bne pfW2NameNext2
+lbz r0, 40(r9)
+cmpwi r0, 99
+bne pfW2NameNext2
+lbz r0, 41(r9)
+cmpwi r0, 116
+bne pfW2NameNext2
+lbz r0, 42(r9)
+cmpwi r0, 68
+bne pfW2NameNext2
+lbz r0, 43(r9)
+cmpwi r0, 97
+bne pfW2NameNext2
+lbz r0, 44(r9)
+cmpwi r0, 116
+bne pfW2NameNext2
+lbz r0, 45(r9)
+cmpwi r0, 97
+bne pfW2NameNext2
+lbz r0, 46(r9)
+cmpwi r0, 47
+bne pfW2NameNext2
+lbz r0, 47(r9)
+cmpwi r0, 67
+bne pfW2NameNext2
+lbz r0, 48(r9)
+cmpwi r0, 111
+bne pfW2NameNext2
+lbz r0, 49(r9)
+cmpwi r0, 117
+bne pfW2NameNext2
+lbz r0, 50(r9)
+cmpwi r0, 114
+bne pfW2NameNext2
+lbz r0, 51(r9)
+cmpwi r0, 115
+bne pfW2NameNext2
+lbz r0, 52(r9)
+cmpwi r0, 101
+bne pfW2NameNext2
+lbz r0, 53(r9)
+cmpwi r0, 83
+bne pfW2NameNext2
+lbz r0, 54(r9)
+cmpwi r0, 101
+bne pfW2NameNext2
+lbz r0, 55(r9)
+cmpwi r0, 108
+bne pfW2NameNext2
+lbz r0, 56(r9)
+cmpwi r0, 101
+bne pfW2NameNext2
+lbz r0, 57(r9)
+cmpwi r0, 99
+bne pfW2NameNext2
+lbz r0, 58(r9)
+cmpwi r0, 116
+bne pfW2NameNext2
+lbz r0, 59(r9)
+cmpwi r0, 85
+bne pfW2NameNext2
+lbz r0, 60(r9)
+cmpwi r0, 110
+bne pfW2NameNext2
+lbz r0, 61(r9)
+cmpwi r0, 100
+bne pfW2NameNext2
+lbz r0, 62(r9)
+cmpwi r0, 101
+bne pfW2NameNext2
+lbz r0, 63(r9)
+cmpwi r0, 114
+bne pfW2NameNext2
+lbz r0, 64(r9)
+cmpwi r0, 71
+bne pfW2NameNext2
+lbz r0, 65(r9)
+cmpwi r0, 114
+bne pfW2NameNext2
+lbz r0, 66(r9)
+cmpwi r0, 111
+bne pfW2NameNext2
+lbz r0, 67(r9)
+cmpwi r0, 117
+bne pfW2NameNext2
+lbz r0, 68(r9)
+cmpwi r0, 110
+bne pfW2NameNext2
+lbz r0, 69(r9)
+cmpwi r0, 100
+bne pfW2NameNext2
+b pfW2NameEndStart
+pfW2NameNext2:
+lbz r0, 36(r9)
+cmpwi r0, 79
+bne pfW2NameNext3
+lbz r0, 37(r9)
+cmpwi r0, 98
+bne pfW2NameNext3
+lbz r0, 38(r9)
+cmpwi r0, 106
+bne pfW2NameNext3
+lbz r0, 39(r9)
+cmpwi r0, 101
+bne pfW2NameNext3
+lbz r0, 40(r9)
+cmpwi r0, 99
+bne pfW2NameNext3
+lbz r0, 41(r9)
+cmpwi r0, 116
+bne pfW2NameNext3
+lbz r0, 42(r9)
+cmpwi r0, 68
+bne pfW2NameNext3
+lbz r0, 43(r9)
+cmpwi r0, 97
+bne pfW2NameNext3
+lbz r0, 44(r9)
+cmpwi r0, 116
+bne pfW2NameNext3
+lbz r0, 45(r9)
+cmpwi r0, 97
+bne pfW2NameNext3
+lbz r0, 46(r9)
+cmpwi r0, 47
+bne pfW2NameNext3
+lbz r0, 47(r9)
+cmpwi r0, 67
+bne pfW2NameNext3
+lbz r0, 48(r9)
+cmpwi r0, 111
+bne pfW2NameNext3
+lbz r0, 49(r9)
+cmpwi r0, 117
+bne pfW2NameNext3
+lbz r0, 50(r9)
+cmpwi r0, 114
+bne pfW2NameNext3
+lbz r0, 51(r9)
+cmpwi r0, 115
+bne pfW2NameNext3
+lbz r0, 52(r9)
+cmpwi r0, 101
+bne pfW2NameNext3
+lbz r0, 53(r9)
+cmpwi r0, 83
+bne pfW2NameNext3
+lbz r0, 54(r9)
+cmpwi r0, 101
+bne pfW2NameNext3
+lbz r0, 55(r9)
+cmpwi r0, 108
+bne pfW2NameNext3
+lbz r0, 56(r9)
+cmpwi r0, 101
+bne pfW2NameNext3
+lbz r0, 57(r9)
+cmpwi r0, 99
+bne pfW2NameNext3
+lbz r0, 58(r9)
+cmpwi r0, 116
+bne pfW2NameNext3
+lbz r0, 59(r9)
+cmpwi r0, 87
+bne pfW2NameNext3
+lbz r0, 60(r9)
+cmpwi r0, 97
+bne pfW2NameNext3
+lbz r0, 61(r9)
+cmpwi r0, 118
+bne pfW2NameNext3
+lbz r0, 62(r9)
+cmpwi r0, 101
+bne pfW2NameNext3
+lbz r0, 63(r9)
+cmpwi r0, 85
+bne pfW2NameNext3
+lbz r0, 64(r9)
+cmpwi r0, 110
+bne pfW2NameNext3
+lbz r0, 65(r9)
+cmpwi r0, 100
+bne pfW2NameNext3
+lbz r0, 66(r9)
+cmpwi r0, 101
+bne pfW2NameNext3
+lbz r0, 67(r9)
+cmpwi r0, 114
+bne pfW2NameNext3
+lbz r0, 68(r9)
+cmpwi r0, 71
+bne pfW2NameNext3
+lbz r0, 69(r9)
+cmpwi r0, 114
+bne pfW2NameNext3
+lbz r0, 70(r9)
+cmpwi r0, 111
+bne pfW2NameNext3
+lbz r0, 71(r9)
+cmpwi r0, 117
+bne pfW2NameNext3
+lbz r0, 72(r9)
+cmpwi r0, 110
+bne pfW2NameNext3
+lbz r0, 73(r9)
+cmpwi r0, 100
+bne pfW2NameNext3
+b pfW2NameEndStart
+pfW2NameNext3:
+lbz r0, 36(r9)
+cmpwi r0, 79
+bne pfW2NameNext4
+lbz r0, 37(r9)
+cmpwi r0, 98
+bne pfW2NameNext4
+lbz r0, 38(r9)
+cmpwi r0, 106
+bne pfW2NameNext4
+lbz r0, 39(r9)
+cmpwi r0, 101
+bne pfW2NameNext4
+lbz r0, 40(r9)
+cmpwi r0, 99
+bne pfW2NameNext4
+lbz r0, 41(r9)
+cmpwi r0, 116
+bne pfW2NameNext4
+lbz r0, 42(r9)
+cmpwi r0, 68
+bne pfW2NameNext4
+lbz r0, 43(r9)
+cmpwi r0, 97
+bne pfW2NameNext4
+lbz r0, 44(r9)
+cmpwi r0, 116
+bne pfW2NameNext4
+lbz r0, 45(r9)
+cmpwi r0, 97
+bne pfW2NameNext4
+lbz r0, 46(r9)
+cmpwi r0, 47
+bne pfW2NameNext4
+lbz r0, 47(r9)
+cmpwi r0, 67
+bne pfW2NameNext4
+lbz r0, 48(r9)
+cmpwi r0, 111
+bne pfW2NameNext4
+lbz r0, 49(r9)
+cmpwi r0, 117
+bne pfW2NameNext4
+lbz r0, 50(r9)
+cmpwi r0, 114
+bne pfW2NameNext4
+lbz r0, 51(r9)
+cmpwi r0, 115
+bne pfW2NameNext4
+lbz r0, 52(r9)
+cmpwi r0, 101
+bne pfW2NameNext4
+lbz r0, 53(r9)
+cmpwi r0, 83
+bne pfW2NameNext4
+lbz r0, 54(r9)
+cmpwi r0, 101
+bne pfW2NameNext4
+lbz r0, 55(r9)
+cmpwi r0, 108
+bne pfW2NameNext4
+lbz r0, 56(r9)
+cmpwi r0, 101
+bne pfW2NameNext4
+lbz r0, 57(r9)
+cmpwi r0, 99
+bne pfW2NameNext4
+lbz r0, 58(r9)
+cmpwi r0, 116
+bne pfW2NameNext4
+lbz r0, 59(r9)
+cmpwi r0, 87
+bne pfW2NameNext4
+b pfW2NameEndStart
+pfW2NameNext4:
+lbz r0, 36(r9)
+cmpwi r0, 79
+bne pfW2NameNext5
+lbz r0, 37(r9)
+cmpwi r0, 98
+bne pfW2NameNext5
+lbz r0, 38(r9)
+cmpwi r0, 106
+bne pfW2NameNext5
+lbz r0, 39(r9)
+cmpwi r0, 101
+bne pfW2NameNext5
+lbz r0, 40(r9)
+cmpwi r0, 99
+bne pfW2NameNext5
+lbz r0, 41(r9)
+cmpwi r0, 116
+bne pfW2NameNext5
+lbz r0, 42(r9)
+cmpwi r0, 68
+bne pfW2NameNext5
+lbz r0, 43(r9)
+cmpwi r0, 97
+bne pfW2NameNext5
+lbz r0, 44(r9)
+cmpwi r0, 116
+bne pfW2NameNext5
+lbz r0, 45(r9)
+cmpwi r0, 97
+bne pfW2NameNext5
+lbz r0, 46(r9)
+cmpwi r0, 47
+bne pfW2NameNext5
+lbz r0, 47(r9)
+cmpwi r0, 77
+bne pfW2NameNext5
+lbz r0, 48(r9)
+cmpwi r0, 105
+bne pfW2NameNext5
+lbz r0, 49(r9)
+cmpwi r0, 110
+bne pfW2NameNext5
+lbz r0, 50(r9)
+cmpwi r0, 105
+bne pfW2NameNext5
+lbz r0, 51(r9)
+cmpwi r0, 97
+bne pfW2NameNext5
+lbz r0, 52(r9)
+cmpwi r0, 116
+bne pfW2NameNext5
+lbz r0, 53(r9)
+cmpwi r0, 117
+bne pfW2NameNext5
+lbz r0, 54(r9)
+cmpwi r0, 114
+bne pfW2NameNext5
+lbz r0, 55(r9)
+cmpwi r0, 101
+bne pfW2NameNext5
+b pfW2NameEndStart
+pfW2NameNext5:
+lbz r0, 36(r9)
+cmpwi r0, 79
+bne pfW2NameNext6
+lbz r0, 37(r9)
+cmpwi r0, 98
+bne pfW2NameNext6
+lbz r0, 38(r9)
+cmpwi r0, 106
+bne pfW2NameNext6
+lbz r0, 39(r9)
+cmpwi r0, 101
+bne pfW2NameNext6
+lbz r0, 40(r9)
+cmpwi r0, 99
+bne pfW2NameNext6
+lbz r0, 41(r9)
+cmpwi r0, 116
+bne pfW2NameNext6
+lbz r0, 42(r9)
+cmpwi r0, 68
+bne pfW2NameNext6
+lbz r0, 43(r9)
+cmpwi r0, 97
+bne pfW2NameNext6
+lbz r0, 44(r9)
+cmpwi r0, 116
+bne pfW2NameNext6
+lbz r0, 45(r9)
+cmpwi r0, 97
+bne pfW2NameNext6
+lbz r0, 46(r9)
+cmpwi r0, 47
+bne pfW2NameNext6
+lbz r0, 47(r9)
+cmpwi r0, 70
+bne pfW2NameNext6
+lbz r0, 48(r9)
+cmpwi r0, 97
+bne pfW2NameNext6
+lbz r0, 49(r9)
+cmpwi r0, 105
+bne pfW2NameNext6
+lbz r0, 50(r9)
+cmpwi r0, 114
+bne pfW2NameNext6
+lbz r0, 51(r9)
+cmpwi r0, 121
+bne pfW2NameNext6
+lbz r0, 52(r9)
+cmpwi r0, 80
+bne pfW2NameNext6
+lbz r0, 53(r9)
+cmpwi r0, 114
+bne pfW2NameNext6
+lbz r0, 54(r9)
+cmpwi r0, 105
+bne pfW2NameNext6
+lbz r0, 55(r9)
+cmpwi r0, 110
+bne pfW2NameNext6
+lbz r0, 56(r9)
+cmpwi r0, 99
+bne pfW2NameNext6
+lbz r0, 57(r9)
+cmpwi r0, 101
+bne pfW2NameNext6
+lbz r0, 58(r9)
+cmpwi r0, 115
+bne pfW2NameNext6
+lbz r0, 59(r9)
+cmpwi r0, 115
+bne pfW2NameNext6
+b pfW2NameEndStart
+pfW2NameNext6:
+b pfPipeCall
+pfW2NameEndStart:
+addi r10, r9, 36
+li r11, 64
+pfW2NameEnd:
+lbz r0, 0(r10)
+cmpwi r0, 0
+beq pfW2Matrix
+addi r10, r10, 1
+addi r11, r11, -1
+cmpwi r11, 0
+bgt pfW2NameEnd
+b pfPipeCall
+pfW2Matrix:
+addi r10, r10, 4
+rlwinm r10, r10, 0, 0, 29
+lwz r11, 12(r10)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x47C3
+ori r0, r0, 0x5000
+cmplw r11, r0
+bgt pfPipeCall
+lwz r11, 28(r10)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x47C3
+ori r0, r0, 0x5000
+cmplw r11, r0
+bgt pfPipeCall
+lwz r11, 44(r10)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x47C3
+ori r0, r0, 0x5000
+cmplw r11, r0
+bgt pfPipeCall
+lwz r11, 12(r10)
+lis r0, 0x453B
+ori r0, r0, 0x8000
+cmplw r11, r0
+blt pfRoadFound
+lis r0, 0x4633
+ori r0, r0, 0xB000
+cmplw r11, r0
+bgt pfRoadFound
+lwz r11, 28(r10)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x453B
+ori r0, r0, 0x8000
+cmplw r11, r0
+bgt pfRoadFound
+lwz r11, 44(r10)
+cmpwi r11, 0
+bge pfRoadFound
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x447A
+ori r0, r0, 0x0000
+cmplw r11, r0
+blt pfRoadFound
+lis r0, 0x4604
+ori r0, r0, 0xD000
+cmplw r11, r0
+bgt pfRoadFound
+b pfPipeCall
+pfPipeW1Names:
+lbz r0, 36(r9)
+cmpwi r0, 79
+bne pfPipeRoadCheck
+lbz r0, 37(r9)
+cmpwi r0, 98
+bne pfPipeRoadCheck
+lbz r0, 38(r9)
+cmpwi r0, 106
+bne pfPipeRoadCheck
+lbz r0, 39(r9)
+cmpwi r0, 101
+bne pfPipeRoadCheck
+lbz r0, 40(r9)
+cmpwi r0, 99
+bne pfPipeRoadCheck
+lbz r0, 41(r9)
+cmpwi r0, 116
+bne pfPipeRoadCheck
+lbz r0, 42(r9)
+cmpwi r0, 68
+bne pfPipeRoadCheck
+lbz r0, 43(r9)
+cmpwi r0, 97
+bne pfPipeRoadCheck
+lbz r0, 44(r9)
+cmpwi r0, 116
+bne pfPipeRoadCheck
+lbz r0, 45(r9)
+cmpwi r0, 97
+bne pfPipeRoadCheck
+lbz r0, 46(r9)
+cmpwi r0, 47
+bne pfPipeRoadCheck
+lbz r0, 47(r9)
+cmpwi r0, 82
+bne pfPipeRoadCheck
+lbz r0, 48(r9)
+cmpwi r0, 111
+bne pfPipeRoadCheck
+lbz r0, 49(r9)
+cmpwi r0, 117
+bne pfPipeRoadCheck
+lbz r0, 50(r9)
+cmpwi r0, 116
+bne pfPipeRoadCheck
+lbz r0, 51(r9)
+cmpwi r0, 101
+bne pfPipeRoadCheck
+lbz r0, 52(r9)
+cmpwi r0, 68
+bne pfPipeRoadCheck
+lbz r0, 53(r9)
+cmpwi r0, 111
+bne pfPipeRoadCheck
+lbz r0, 54(r9)
+cmpwi r0, 107
+bne pfPipeRoadCheck
+lbz r0, 55(r9)
+cmpwi r0, 97
+bne pfPipeRoadCheck
+lbz r0, 56(r9)
+cmpwi r0, 110
+bne pfPipeRoadCheck
+b pfPipeFound
+pfPipeRoadCheck:
+lbz r0, 36(r9)
+cmpwi r0, 79
+bne pfPipePointCheck
+lbz r0, 37(r9)
+cmpwi r0, 98
+bne pfPipePointCheck
+lbz r0, 38(r9)
+cmpwi r0, 106
+bne pfPipePointCheck
+lbz r0, 39(r9)
+cmpwi r0, 101
+bne pfPipePointCheck
+lbz r0, 40(r9)
+cmpwi r0, 99
+bne pfPipePointCheck
+lbz r0, 41(r9)
+cmpwi r0, 116
+bne pfPipePointCheck
+lbz r0, 42(r9)
+cmpwi r0, 68
+bne pfPipePointCheck
+lbz r0, 43(r9)
+cmpwi r0, 97
+bne pfPipePointCheck
+lbz r0, 44(r9)
+cmpwi r0, 116
+bne pfPipePointCheck
+lbz r0, 45(r9)
+cmpwi r0, 97
+bne pfPipePointCheck
+lbz r0, 46(r9)
+cmpwi r0, 47
+bne pfPipePointCheck
+lbz r0, 47(r9)
+cmpwi r0, 67
+bne pfPipePointCheck
+lbz r0, 48(r9)
+cmpwi r0, 111
+bne pfPipePointCheck
+lbz r0, 49(r9)
+cmpwi r0, 117
+bne pfPipePointCheck
+lbz r0, 50(r9)
+cmpwi r0, 114
+bne pfPipePointCheck
+lbz r0, 51(r9)
+cmpwi r0, 115
+bne pfPipePointCheck
+lbz r0, 52(r9)
+cmpwi r0, 101
+bne pfPipePointCheck
+lbz r0, 53(r9)
+cmpwi r0, 83
+bne pfPipePointCheck
+lbz r0, 54(r9)
+cmpwi r0, 101
+bne pfPipePointCheck
+lbz r0, 55(r9)
+cmpwi r0, 108
+bne pfPipePointCheck
+lbz r0, 56(r9)
+cmpwi r0, 101
+bne pfPipePointCheck
+lbz r0, 57(r9)
+cmpwi r0, 99
+bne pfPipePointCheck
+lbz r0, 58(r9)
+cmpwi r0, 116
+bne pfPipePointCheck
+lbz r0, 59(r9)
+cmpwi r0, 82
+bne pfPipePointCheck
+lbz r0, 60(r9)
+cmpwi r0, 111
+bne pfPipePointCheck
+lbz r0, 61(r9)
+cmpwi r0, 97
+bne pfPipePointCheck
+lbz r0, 62(r9)
+cmpwi r0, 100
+bne pfPipePointCheck
+b pfPipeRouteBounds
+pfPipePointCheck:
+lbz r0, 36(r9)
+cmpwi r0, 79
+bne pfPipeCall
+lbz r0, 37(r9)
+cmpwi r0, 98
+bne pfPipeCall
+lbz r0, 38(r9)
+cmpwi r0, 106
+bne pfPipeCall
+lbz r0, 39(r9)
+cmpwi r0, 101
+bne pfPipeCall
+lbz r0, 40(r9)
+cmpwi r0, 99
+bne pfPipeCall
+lbz r0, 41(r9)
+cmpwi r0, 116
+bne pfPipeCall
+lbz r0, 42(r9)
+cmpwi r0, 68
+bne pfPipeCall
+lbz r0, 43(r9)
+cmpwi r0, 97
+bne pfPipeCall
+lbz r0, 44(r9)
+cmpwi r0, 116
+bne pfPipeCall
+lbz r0, 45(r9)
+cmpwi r0, 97
+bne pfPipeCall
+lbz r0, 46(r9)
+cmpwi r0, 47
+bne pfPipeCall
+lbz r0, 47(r9)
+cmpwi r0, 67
+bne pfPipeCall
+lbz r0, 48(r9)
+cmpwi r0, 111
+bne pfPipeCall
+lbz r0, 49(r9)
+cmpwi r0, 117
+bne pfPipeCall
+lbz r0, 50(r9)
+cmpwi r0, 114
+bne pfPipeCall
+lbz r0, 51(r9)
+cmpwi r0, 115
+bne pfPipeCall
+lbz r0, 52(r9)
+cmpwi r0, 101
+bne pfPipeCall
+lbz r0, 53(r9)
+cmpwi r0, 83
+bne pfPipeCall
+lbz r0, 54(r9)
+cmpwi r0, 101
+bne pfPipeCall
+lbz r0, 55(r9)
+cmpwi r0, 108
+bne pfPipeCall
+lbz r0, 56(r9)
+cmpwi r0, 101
+bne pfPipeCall
+lbz r0, 57(r9)
+cmpwi r0, 99
+bne pfPipeCall
+lbz r0, 58(r9)
+cmpwi r0, 116
+bne pfPipeCall
+lbz r0, 59(r9)
+cmpwi r0, 80
+bne pfPipeCall
+lbz r0, 60(r9)
+cmpwi r0, 111
+bne pfPipeCall
+lbz r0, 61(r9)
+cmpwi r0, 105
+bne pfPipeCall
+lbz r0, 62(r9)
+cmpwi r0, 110
+bne pfPipeCall
+lbz r0, 63(r9)
+cmpwi r0, 116
+bne pfPipeCall
+lbz r0, 64(r9)
+cmpwi r0, 0
+bne pfPipeCall
+pfPipeRouteBounds:
+; World 1 only: retain VR visibility on the local routes. Remote road
+; segments still obey native rejection, just as in the successful grip test.
+; Bonus-map filtering is deliberately unchanged.
+lis r10, pfState@ha
+addi r10, r10, pfState@l
+lwz r10, 12(r10)
+cmpwi r10, 1
+bne pfPipeCall
+addi r10, r9, 36
+li r11, 64
+pfRoadNameEnd:
+lbz r0, 0(r10)
+cmpwi r0, 0
+beq pfRoadMatrix
+addi r10, r10, 1
+addi r11, r11, -1
+cmpwi r11, 0
+bgt pfRoadNameEnd
+b pfPipeCall
+pfRoadMatrix:
+addi r10, r10, 4
+rlwinm r10, r10, 0, 0, 29
+; Validate all components first: unknown/nonfinite positions fail open.
+lwz r11, 12(r10)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x47C3
+ori r0, r0, 0x5000 ; 100000.0
+cmplw r11, r0
+bgt pfPipeCall
+lwz r11, 28(r10)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x47C3
+ori r0, r0, 0x5000 ; 100000.0
+cmplw r11, r0
+bgt pfPipeCall
+lwz r11, 44(r10)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x47C3
+ori r0, r0, 0x5000 ; 100000.0
+cmplw r11, r0
+bgt pfPipeCall
+; Generous protected World-1 envelope around verified nodes and rails:
+; X [-5000,5000], Y [-2000,2000], Z [0,5000]. Not a draw-distance cutoff:
+; outside it only the extra VR rescue is disabled; native acceptance wins.
+lwz r11, 12(r10)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x459C
+ori r0, r0, 0x4000 ; 5000.0
+cmplw r11, r0
+bgt pfRoadFound
+lwz r11, 28(r10)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x44FA ; 2000.0
+cmplw r11, r0
+bgt pfRoadFound
+lwz r11, 44(r10)
+cmpwi r11, 0
+blt pfRoadFound
+lis r0, 0x459C
+ori r0, r0, 0x4000
+cmplw r11, r0
+bgt pfRoadFound
+b pfPipeCall
+pfRoadFound:
+lwz r11, 12(r12)
+addi r11, r11, 1
+stw r11, 12(r12)
+pfPipeFound:
+
 li r0, 1
-stw r0, 0(r12)          ; pfPipeState = 1
+stw r0, 0(r12)
 lwz r11, 4(r12)
 addi r11, r11, 1
-stw r11, 4(r12)         ; found count++
-pfPipeActorCall:
+stw r11, 4(r12)
+pfPipeCall:
 bl pfPipeNative
 lis r12, pfPipeState@ha
 addi r12, r12, pfPipeState@l
 lwz r0, 8(r1)
-stw r0, 0(r12)          ; restore pfPipeState
+stw r0, 0(r12)
 lwz r0, 0x24(r1)
 mtlr r0
 addi r1, r1, 0x20
 blr
+pfPipeState:
+.int 0
+.int 0
+.int 0
+.int 0 ; remote World-1 road/point matches, separate from pipe body matches
+0x0242F938 = pfPipeNative:
+0x0242F984 = bla pfPipeActor
+pfEffectDrawProbe:
+stwu r1, -0x40(r1)
+stw r0, 8(r1)
+.int 0x7C000026
+stw r0, 12(r1)
+stw r3, 16(r1)
+stw r4, 20(r1)
+stw r5, 24(r1)
+stw r6, 28(r1)
+stw r7, 32(r1)
+stw r8, 36(r1)
+stw r9, 40(r1)
+stw r10, 44(r1)
+stw r11, 48(r1)
+stw r12, 52(r1)
+lis r12, pfEffectDrawState@ha
+addi r12, r12, pfEffectDrawState@l
+lwz r11, 0(r12)
+addi r11, r11, 1
+stw r11, 0(r12)
+lis r10, mrSceneClass@ha
+lwz r10, mrSceneClass@l(r10)
+lis r0, 0x1027
+ori r0, r0, 0xF388
+cmpw r10, r0
+bne pfEffectDrawDone
+lwz r11, 4(r12)
+addi r11, r11, 1
+stw r11, 4(r12)
+lwz r9, 0x130(r4)
+cmpwi r9, 0
+beq pfEffectDrawDone
+lis r11, pfEffectDrawTable@ha
+addi r11, r11, pfEffectDrawTable@l
+srwi r8, r9, 4
+rlwinm r8, r8, 6, 18, 25
+li r7, 8
+pfEffectDrawProbeSlot:
+add r5, r11, r8
+lwz r0, 0(r5)
+cmpw r0, r9
+beq pfEffectDrawRecord
+cmpwi r0, 0
+beq pfEffectDrawRecord
+addi r8, r8, 64
+rlwinm r8, r8, 0, 18, 25
+addi r7, r7, -1
+cmpwi r7, 0
+bgt pfEffectDrawProbeSlot
+lwz r11, 8(r12)
+addi r11, r11, 1
+stw r11, 8(r12)
+b pfEffectDrawDone
+pfEffectDrawRecord:
+stw r9, 0(r5)
+lwz r11, 4(r5)
+addi r11, r11, 1
+stw r11, 4(r5)
+stw r4, 8(r5)
+lwz r0, 0(r9)
+stw r0, 12(r5)
+lwz r0, 4(r9)
+stw r0, 16(r5)
+lwz r0, 0x38(r9)
+stw r0, 20(r5)
+lwz r0, 0x2E8(r9)
+stw r0, 24(r5)
+lwz r0, 0x3C(r9)
+stw r0, 28(r5)
+lwz r0, 0x2F8(r4)
+stw r0, 32(r5)
+lwz r0, 0x64(r4)
+stw r0, 36(r5)
+lwz r0, 0x2FC(r4)
+stw r0, 40(r5)
+lwz r0, 0x70(r4)
+stw r0, 44(r5)
+lis r12, pfState@ha
+addi r12, r12, pfState@l
+lwz r0, 12(r12)
+stw r0, 48(r5)
+lwz r0, 8(r12)
+stw r0, 52(r5)
+lwz r0, 28(r1) ; original r6: parent/child pass
+stw r0, 56(r5)
+lwz r0, 0xD4(r4) ; emitter matrix translation Y
+stw r0, 60(r5)
+pfEffectDrawDone:
+lwz r3, 16(r1)
+lwz r4, 20(r1)
+lwz r5, 24(r1)
+lwz r6, 28(r1)
+lwz r7, 32(r1)
+lwz r8, 36(r1)
+lwz r9, 40(r1)
+lwz r10, 44(r1)
+lwz r11, 48(r1)
+lwz r12, 52(r1)
+lwz r0, 12(r1)
+.int 0x7C0FF120
+lwz r0, 8(r1)
+addi r1, r1, 0x40
+stwu r1, -0x70(r1)
+b pfEffectDrawContinue
+pfEffectDrawState:
+.int 0
+.int 0
+.int 0
+pfEffectDrawTable:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+0x0253F524 = pfEffectDrawContinue:
+0x0253F520 = ba pfEffectDrawProbe
+pfFlareStats:
+.int 0
+.int 0
+.int 0
+pfToadLampStats:
+.int 0
+pfEffectSubmit:
+stwu r1, -0xA0(r1)
+mflr r0
+stw r0, 0xA4(r1)
+stw r3, 8(r1)
+stw r4, 12(r1)
+stw r5, 16(r1)
+stw r6, 20(r1)
+stw r7, 24(r1)
+stw r8, 28(r1)
+stw r9, 32(r1)
+stw r20, 40(r1)
+stw r21, 44(r1)
+stw r22, 48(r1)
+stw r23, 52(r1)
+stw r24, 56(r1)
+stw r25, 60(r1)
+stw r26, 64(r1)
+stw r27, 68(r1)
+stw r28, 72(r1)
+stw r29, 76(r1)
+stw r30, 80(r1)
+stw r31, 84(r1)
+; Captain Toad head ray: exact resource, effective FP, fresh nearby anchor.
+lis r12, mrSceneClass@ha
+lwz r12, mrSceneClass@l(r12)
+lis r11, 0x1032
+ori r11, r11, 0x86DC
+cmpw r12, r11
+bne pfToadLampContinue
+lwz r10, 0x130(r31)
+cmpwi r10, 0
+beq pfToadLampContinue
+lwz r11, 0(r10)
+cmpwi r11, 0
+bne pfToadLampContinue
+lwz r11, 4(r10)
+cmpwi r11, 0
+bne pfToadLampContinue
+lwz r11, 0x2E8(r10)
+cmpwi r11, -1
+bne pfToadLampContinue
+lwz r11, 0x38(r10)
+cmplwi r11, 0xD162
+beq pfToadLampMode
+cmplwi r11, 0xD169
+bne pfToadLampContinue
+pfToadLampMode:
+lis r12, mtControl@ha
+lwz r11, mtControl@l(r12)
+cmpwi r11, 1
+bne pfToadLampContinue
+lis r12, rrSlot@ha
+lwz r11, rrSlot@l(r12)
+cmplwi r11, 1
+bgt pfToadLampContinue
+mulli r11, r11, 2
+lis r12, rrEye@ha
+lwz r10, rrEye@l(r12)
+cmplwi r10, 1
+bgt pfToadLampContinue
+add r11, r11, r10
+mulli r11, r11, 4
+lis r12, mtNearState@ha
+addi r12, r12, mtNearState@l
+add r12, r12, r11
+lwz r11, 0(r12)
+cmpwi r11, 1
+bne pfToadLampContinue
+lis r12, mtHideModel@ha
+addi r12, r12, mtHideModel@l
+lwz r11, 16(r12)
+cmplwi r11, 1
+blt pfToadLampContinue
+cmplwi r11, 17
+bgt pfToadLampContinue
+lwz r11, 12(r12)
+lwz r10, 4(r12)
+subf r11, r10, r11
+cmplwi r11, 2
+bgt pfToadLampContinue
+; Save full FPR precision; original draw arguments are still in r3..r9.
+stwu r1, -0x20(r1)
+stfd f0, 8(r1)
+stfd f1, 16(r1)
+lis r12, mrEyeTarget@ha
+addi r12, r12, mrEyeTarget@l
+lfs f0, 0xC4(r31)
+lfs f1, 0(r12)
+fsubs f0, f0, f1
+stfs f0, 24(r1)
+lwz r11, 24(r1)
+rlwinm r11, r11, 0, 1, 31
+lis r10, 0x4348
+cmplw r11, r10
+bgt pfToadLampFar
+lfs f0, 0xD4(r31)
+lfs f1, 4(r12)
+fsubs f0, f0, f1
+stfs f0, 24(r1)
+lwz r11, 24(r1)
+rlwinm r11, r11, 0, 1, 31
+lis r10, 0x4348
+cmplw r11, r10
+bgt pfToadLampFar
+lfs f0, 0xE4(r31)
+lfs f1, 8(r12)
+fsubs f0, f0, f1
+stfs f0, 24(r1)
+lwz r11, 24(r1)
+rlwinm r11, r11, 0, 1, 31
+lis r10, 0x4348
+cmplw r11, r10
+bgt pfToadLampFar
+li r10, 1
+b pfToadLampRestore
+pfToadLampFar:
+li r10, 0
+pfToadLampRestore:
+lfd f0, 8(r1)
+lfd f1, 16(r1)
+addi r1, r1, 0x20
+cmpwi r10, 0
+beq pfToadLampContinue
+lis r12, pfToadLampStats@ha
+lwz r11, pfToadLampStats@l(r12)
+addi r11, r11, 1
+stw r11, pfToadLampStats@l(r12)
+; Keep the native full feedback binding even when the colour draw is skipped.
+cmpwi r8, 0
+beq pfEffectDone
+mr r5, r4
+mr r4, r8
+bl pfEffectBindNative
+b pfEffectDone
+pfToadLampContinue:
+; ScreenLensFlareRight only, in StageScene. No map-state dependency.
+lis r12, mrSceneClass@ha
+lwz r12, mrSceneClass@l(r12)
+lis r11, 0x1032
+ori r11, r11, 0x86DC
+cmpw r12, r11
+beq pfScreenFlareStage
+lis r11, 0x1027
+ori r11, r11, 0xF388
+cmpw r12, r11
+bne pfScreenFlareContinue
+lis r10, pfFlareStats@ha
+addi r10, r10, pfFlareStats@l
+lwz r11, 8(r10)
+addi r11, r11, 1
+stw r11, 8(r10)
+b pfScreenFlareDefinition
+pfScreenFlareStage:
+pfScreenFlareDefinition:
+lwz r10, 0x130(r31)
+cmpwi r10, 0
+beq pfScreenFlareContinue
+lwz r11, 0(r10)
+cmpwi r11, 0
+bne pfScreenFlareContinue
+lwz r11, 4(r10)
+cmpwi r11, 0
+bne pfScreenFlareContinue
+lwz r11, 0x2E8(r10)
+cmpwi r11, -1
+bne pfScreenFlareContinue
+lwz r11, 0x38(r10)
+; Select the resource set by exact scene class; preserve sibling flare sets.
+lis r10, 0x1027
+ori r10, r10, 0xF388
+cmpw r12, r10
+beq pfScreenFlareMap
+cmplwi r11, 0xD24F
+beq pfScreenFlareSkip
+cmplwi r11, 0xD259
+beq pfScreenFlareSkip
+cmplwi r11, 0xD267
+beq pfScreenFlareSkip
+b pfScreenFlareContinue
+pfScreenFlareMap:
+cmplwi r11, 0xE258
+beq pfScreenFlareSkip
+cmplwi r11, 0xE262
+beq pfScreenFlareSkip
+cmplwi r11, 0xE270
+beq pfScreenFlareSkip
+b pfScreenFlareContinue
+pfScreenFlareSkip:
+lis r10, pfFlareStats@ha
+addi r10, r10, pfFlareStats@l
+lis r11, 0x1027
+ori r11, r11, 0xF388
+cmpw r12, r11
+bne pfScreenFlareCount
+addi r10, r10, 4
+pfScreenFlareCount:
+lwz r11, 0(r10)
+addi r11, r11, 1
+stw r11, 0(r10)
+; Preserve the full buffer binding required by native particle feedback.
+; r8==0 means the caller already bound it; never filter the simulation.
+cmpwi r8, 0
+beq pfEffectDone
+mr r5, r4
+mr r4, r8
+bl pfEffectBindNative
+b pfEffectDone
+pfScreenFlareContinue:
+lis r12, mrSceneClass@ha
+lwz r12, mrSceneClass@l(r12)
+lis r11, 0x1027
+ori r11, r11, 0xF388
+cmpw r12, r11
+bne pfEffectOriginal
+; All four call sites retain the emitter in native r31.
+lwz r10, 0x130(r31)
+cmpwi r10, 0
+beq pfEffectOriginal
+lis r12, pfState@ha
+addi r12, r12, pfState@l
+lwz r11, 12(r12)
+cmpwi r11, 2
+bne pfW2FairyMiss
+lwz r11, 0x2E8(r10)
+cmpwi r11, -1
+bne pfW2FairyMiss
+lwz r11, 0(r10)
+lis r12, 0x0000
+ori r12, r12, 0x0001
+cmpw r11, r12
+bne pfW2FairyNext0
+lwz r11, 4(r10)
+lis r12, 0x0038
+ori r12, r12, 0x0000
+cmpw r11, r12
+bne pfW2FairyNext0
+lwz r11, 56(r10)
+lis r12, 0x0000
+ori r12, r12, 0x20B9
+cmpw r11, r12
+bne pfW2FairyNext0
+b pfW2FairyPosition
+pfW2FairyNext0:
+lwz r11, 0(r10)
+lis r12, 0x0000
+ori r12, r12, 0x0000
+cmpw r11, r12
+bne pfW2FairyNext1
+lwz r11, 4(r10)
+lis r12, 0x0080
+ori r12, r12, 0x0000
+cmpw r11, r12
+bne pfW2FairyNext1
+lwz r11, 56(r10)
+lis r12, 0x0000
+ori r12, r12, 0x20BE
+cmpw r11, r12
+bne pfW2FairyNext1
+b pfW2FairyPosition
+pfW2FairyNext1:
+lwz r11, 0(r10)
+lis r12, 0x0000
+ori r12, r12, 0x0001
+cmpw r11, r12
+bne pfW2FairyNext2
+lwz r11, 4(r10)
+lis r12, 0x0038
+ori r12, r12, 0x0000
+cmpw r11, r12
+bne pfW2FairyNext2
+lwz r11, 56(r10)
+lis r12, 0x0000
+ori r12, r12, 0xA661
+cmpw r11, r12
+bne pfW2FairyNext2
+b pfW2FairyPosition
+pfW2FairyNext2:
+lwz r11, 0(r10)
+lis r12, 0x0000
+ori r12, r12, 0x0000
+cmpw r11, r12
+bne pfW2FairyNext3
+lwz r11, 4(r10)
+lis r12, 0x0080
+ori r12, r12, 0x0000
+cmpw r11, r12
+bne pfW2FairyNext3
+lwz r11, 56(r10)
+lis r12, 0x0000
+ori r12, r12, 0xA666
+cmpw r11, r12
+bne pfW2FairyNext3
+b pfW2FairyPosition
+pfW2FairyNext3:
+lwz r11, 0(r10)
+lis r12, 0x0000
+ori r12, r12, 0x0001
+cmpw r11, r12
+bne pfW2FairyNext4
+lwz r11, 4(r10)
+lis r12, 0x0038
+ori r12, r12, 0x0000
+cmpw r11, r12
+bne pfW2FairyNext4
+lwz r11, 56(r10)
+lis r12, 0x0000
+ori r12, r12, 0x690C
+cmpw r11, r12
+bne pfW2FairyNext4
+b pfW2FairyPosition
+pfW2FairyNext4:
+lwz r11, 0(r10)
+lis r12, 0x0000
+ori r12, r12, 0x0000
+cmpw r11, r12
+bne pfW2FairyNext5
+lwz r11, 4(r10)
+lis r12, 0x0080
+ori r12, r12, 0x0000
+cmpw r11, r12
+bne pfW2FairyNext5
+lwz r11, 56(r10)
+lis r12, 0x0000
+ori r12, r12, 0x6911
+cmpw r11, r12
+bne pfW2FairyNext5
+b pfW2FairyPosition
+pfW2FairyNext5:
+lwz r11, 0(r10)
+lis r12, 0x0000
+ori r12, r12, 0x0001
+cmpw r11, r12
+bne pfW2FairyNext6
+lwz r11, 4(r10)
+lis r12, 0x0038
+ori r12, r12, 0x0000
+cmpw r11, r12
+bne pfW2FairyNext6
+lwz r11, 56(r10)
+lis r12, 0x0000
+ori r12, r12, 0xD5DD
+cmpw r11, r12
+bne pfW2FairyNext6
+b pfW2FairyPosition
+pfW2FairyNext6:
+lwz r11, 0(r10)
+lis r12, 0x0000
+ori r12, r12, 0x0000
+cmpw r11, r12
+bne pfW2FairyNext7
+lwz r11, 4(r10)
+lis r12, 0x0080
+ori r12, r12, 0x0000
+cmpw r11, r12
+bne pfW2FairyNext7
+lwz r11, 56(r10)
+lis r12, 0x0000
+ori r12, r12, 0xD5E2
+cmpw r11, r12
+bne pfW2FairyNext7
+b pfW2FairyPosition
+pfW2FairyNext7:
+b pfW2FairyMiss
+pfW2FairyPosition:
+lwz r11, 196(r31)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x47C3
+ori r0, r0, 0x5000
+cmplw r11, r0
+bgt pfW2FairyMiss
+lwz r11, 212(r31)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x47C3
+ori r0, r0, 0x5000
+cmplw r11, r0
+bgt pfW2FairyMiss
+lwz r11, 228(r31)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x47C3
+ori r0, r0, 0x5000
+cmplw r11, r0
+bgt pfW2FairyMiss
+lwz r11, 196(r31)
+lis r0, 0x453B
+ori r0, r0, 0x8000
+cmplw r11, r0
+blt pfW2FairyHide
+lis r0, 0x4633
+ori r0, r0, 0xB000
+cmplw r11, r0
+bgt pfW2FairyHide
+lwz r11, 212(r31)
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x453B
+ori r0, r0, 0x8000
+cmplw r11, r0
+bgt pfW2FairyHide
+lwz r11, 228(r31)
+cmpwi r11, 0
+bge pfW2FairyHide
+rlwinm r11, r11, 0, 1, 31
+lis r0, 0x447A
+ori r0, r0, 0x0000
+cmplw r11, r0
+blt pfW2FairyHide
+lis r0, 0x4604
+ori r0, r0, 0xD000
+cmplw r11, r0
+bgt pfW2FairyHide
+b pfW2FairyMiss
+pfW2FairyHide:
+cmpwi r8, 0
+beq pfEffectDone
+mr r5, r4
+mr r4, r8
+bl pfEffectBindNative
+b pfEffectDone
+pfW2FairyMiss:
+lwz r11, 0x2E8(r10)
+cmpwi r11, -1
+bne pfAttachedMiss
+lis r20, pfAttachedIdentities@ha
+addi r20, r20, pfAttachedIdentities@l
+li r21, 16
+pfAttachedFind:
+lwz r11, 0x38(r10)
+lwz r12, 8(r20)
+cmpw r11, r12
+bne pfAttachedNext
+lwz r11, 0(r10)
+lwz r12, 0(r20)
+cmpw r11, r12
+bne pfAttachedNext
+lwz r11, 4(r10)
+lwz r12, 4(r20)
+cmpw r11, r12
+beq pfAttachedPosition
+pfAttachedNext:
+addi r20, r20, 12
+addi r21, r21, -1
+cmpwi r21, 0
+bgt pfAttachedFind
+b pfAttachedMiss
+pfAttachedPosition:
+lis r12, pfState@ha
+addi r12, r12, pfState@l
+lwz r22, 8(r12)
+cmplwi r22, 1
+blt pfEffectOriginal
+cmplwi r22, 3
+bgt pfEffectOriginal
+lwz r11, 12(r12)
+cmplwi r11, 9
+blt pfEffectOriginal
+cmplwi r11, 12
+bgt pfEffectOriginal
+lwz r11, 0xD4(r31)
+lis r12, 0x46AB
+ori r12, r12, 0xE000
+cmplw r11, r12
+blt pfEffectOriginal
+lis r12, 0x470E
+ori r12, r12, 0x9400
+cmplw r11, r12
+bgt pfEffectOriginal
+lis r12, 0x46D0
+ori r12, r12, 0x3400
+cmplw r11, r12
+blt pfAttachedLower
+lis r12, 0x46F7
+ori r12, r12, 0xDA00
+cmplw r11, r12
+blt pfAttachedMiddle
+li r11, 3
+b pfAttachedCompare
+pfAttachedLower:
+li r11, 1
+b pfAttachedCompare
+pfAttachedMiddle:
+li r11, 2
+pfAttachedCompare:
+cmpw r11, r22
+beq pfEffectOriginal
+lis r12, pfAttachedState@ha
+addi r12, r12, pfAttachedState@l
+lwz r11, 0(r12)
+addi r11, r11, 1
+stw r11, 0(r12)
+lwz r11, 4(r12)
+add r11, r11, r7
+stw r11, 4(r12)
+; Skip only this colour draw; preserve the exact native attribute binding.
+; The r8=0 feedback path already has its complete source bound.
+cmpwi r8, 0
+beq pfEffectDone
+mr r5, r4
+mr r4, r8
+bl pfEffectBindNative
+b pfEffectDone
+pfAttachedMiss:
+
+lwz r11, 0(r10)
+cmpwi r11, 0
+bne pfEffectOriginal
+lwz r11, 4(r10)
+lis r12, 0x80
+cmpw r11, r12
+bne pfEffectOriginal
+lwz r11, 0x38(r10)
+lwz r12, 0x2E8(r10)
+cmplwi r11, 0xA27D
+bne pfEffectCheckB
+cmpwi r12, 152
+bne pfEffectOriginal
+b pfEffectIdentified
+pfEffectCheckB:
+cmplwi r11, 0xA283
+bne pfEffectCheckC
+cmpwi r12, 153
+bne pfEffectOriginal
+b pfEffectIdentified
+pfEffectCheckC:
+cmplwi r11, 0xA289
+bne pfEffectOriginal
+cmpwi r12, 154
+bne pfEffectOriginal
+pfEffectIdentified:
+lis r12, pfState@ha
+addi r12, r12, pfState@l
+lwz r22, 8(r12)
+cmplwi r22, 3
+bgt pfEffectOriginal
+; Plane zero means a regular world, where ALL bonus-plane glitter is foreign.
+; Reject stale/unknown world state rather than infer a plane during loading.
+lwz r11, 12(r12)
+cmplwi r11, 1
+blt pfEffectOriginal
+cmplwi r11, 12
+bgt pfEffectOriginal
+mr r25, r8
+cmpwi r25, 0
+bne pfEffectHaveBuffer
+mr r25, r27
+pfEffectHaveBuffer:
+lis r11, 0x1000
+cmplw r25, r11
+blt pfEffectOriginal
+lis r11, 0x5000
+cmplw r25, r11
+bge pfEffectOriginal
+cmpwi r7, 0
+beq pfEffectOriginal
+add r24, r6, r7
+cmplw r24, r6
+blt pfEffectOriginal
+cmplwi r24, 8192
+bgt pfEffectOriginal
+mulli r11, r24, 192
+add r11, r25, r11
+lis r12, 0x5000
+cmplw r11, r12
+bgt pfEffectOriginal
+mr r23, r6
+li r26, -1
+li r30, 0
+lis r12, pfEffectFilterState@ha
+addi r12, r12, pfEffectFilterState@l
+lwz r11, 0(r12)
+addi r11, r11, 1
+stw r11, 0(r12)
+pfEffectLoop:
+cmplw r23, r24
+bge pfEffectFlushEnd
+cmpwi r22, 0
+beq pfEffectReject
+mulli r11, r23, 192
+add r11, r25, r11
+lwz r3, 4(r11)
+mr r4, r22
+bl pfEffectKeepY
+cmpwi r3, 0
+beq pfEffectReject
+cmpwi r26, -1
+bne pfEffectNext
+mr r26, r23
+b pfEffectNext
+pfEffectReject:
+addi r30, r30, 1
+cmpwi r26, -1
+beq pfEffectNext
+bl pfEffectDrawRun
+li r26, -1
+pfEffectNext:
+addi r23, r23, 1
+b pfEffectLoop
+pfEffectFlushEnd:
+cmpwi r26, -1
+beq pfEffectRebind
+bl pfEffectDrawRun
+pfEffectRebind:
+; Restore the full binding even after rejecting every instance. Native GPU
+; feedback uses it after the colour draw, so leave simulation unfiltered.
+lwz r3, 8(r1)
+mr r4, r25
+lwz r5, 12(r1)
+lwz r6, 20(r1)
+lwz r7, 24(r1)
+bl pfEffectBindNative
+lis r12, pfEffectFilterState@ha
+addi r12, r12, pfEffectFilterState@l
+lwz r11, 4(r12)
+add r11, r11, r30
+stw r11, 4(r12)
+b pfEffectDone
+pfEffectOriginal:
+lwz r3, 8(r1)
+lwz r4, 12(r1)
+lwz r5, 16(r1)
+lwz r6, 20(r1)
+lwz r7, 24(r1)
+lwz r8, 28(r1)
+lwz r9, 32(r1)
+bl pfEffectNative
+pfEffectDone:
+lwz r20, 40(r1)
+lwz r21, 44(r1)
+lwz r22, 48(r1)
+lwz r23, 52(r1)
+lwz r24, 56(r1)
+lwz r25, 60(r1)
+lwz r26, 64(r1)
+lwz r27, 68(r1)
+lwz r28, 72(r1)
+lwz r29, 76(r1)
+lwz r30, 80(r1)
+lwz r31, 84(r1)
+lwz r0, 0xA4(r1)
+mtlr r0
+addi r1, r1, 0xA0
+blr
+; Same stack frame as caller: save only this leaf-helper return address.
+pfEffectDrawRun:
+mflr r0
+stw r0, 92(r1)
+lwz r3, 8(r1)
+lwz r4, 12(r1)
+lwz r5, 16(r1)
+mr r6, r26
+subf r7, r26, r23
+mr r8, r25
+lwz r9, 32(r1)
+bl pfEffectNative
+lis r12, pfEffectFilterState@ha
+addi r12, r12, pfEffectFilterState@l
+lwz r11, 8(r12)
+addi r11, r11, 1
+stw r11, 8(r12)
+lwz r0, 92(r1)
+mtlr r0
+blr
+; r3=IEEE local Y, r4=active plane. Return r3=1 for unknown or same plane.
+pfEffectKeepY:
+cmpwi r3, 0
+bge pfEffectPositiveY
+rlwinm r5, r3, 0, 1, 31
+lis r6, 0x44FA
+cmplw r5, r6
+bgt pfEffectKeep
+li r6, 1
+b pfEffectComparePlane
+pfEffectPositiveY:
+lis r5, 0x463F
+ori r5, r5, 0x6800
+cmplw r3, r5
+bgt pfEffectKeep
+lis r5, 0x4516
+ori r5, r5, 0x0000
+cmplw r3, r5
+blt pfEffectLowerY
+lis r5, 0x45E9
+ori r5, r5, 0x9800
+cmplw r3, r5
+blt pfEffectMiddleY
+li r6, 3
+b pfEffectComparePlane
+pfEffectLowerY:
+li r6, 1
+b pfEffectComparePlane
+pfEffectMiddleY:
+li r6, 2
+pfEffectComparePlane:
+cmpw r6, r4
+beq pfEffectKeep
+li r3, 0
+blr
+pfEffectKeep:
+li r3, 1
+blr
+pfAttachedState:
+.int 0
+.int 0
+pfAttachedIdentities:
+.int 0x00000000
+.int 0x00000000
+.int 0x0000D162
+.int 0x00000000
+.int 0x00000000
+.int 0x0000D169
+.int 0x00000000
+.int 0x00800000
+.int 0x00001FD4
+.int 0x00000000
+.int 0x00800000
+.int 0x00001FDB
+.int 0x00000000
+.int 0x00801080
+.int 0x00007F99
+.int 0x00000000
+.int 0x00800000
+.int 0x00007FA5
+.int 0x00000000
+.int 0x00801880
+.int 0x00007FAA
+.int 0x00000001
+.int 0x00060000
+.int 0x0000CF43
+.int 0x00000001
+.int 0x00380000
+.int 0x00002AC0
+.int 0x00000000
+.int 0x00380000
+.int 0x00002AC5
+.int 0x00000000
+.int 0x00801800
+.int 0x000012BD
+.int 0x00000000
+.int 0x00801880
+.int 0x00006E49
+.int 0x00000000
+.int 0x00080200
+.int 0x00006E4F
+.int 0x00000000
+.int 0x00801880
+.int 0x00006E54
+.int 0x00000000
+.int 0x00801880
+.int 0x00003FA3
+.int 0x00000000
+.int 0x00801880
+.int 0x00008759
+
+pfEffectFilterState:
+.int 0
+.int 0
+.int 0
+0x0253F478 = pfEffectNative:
+0x02543ECC = pfEffectBindNative:
+0x0253F8C4 = bla pfEffectSubmit
+0x0253FA98 = bla pfEffectSubmit
+0x0253FAB8 = bla pfEffectSubmit
+0x0253FAF4 = bla pfEffectSubmit
+0x023E3AD4 = bla pfDraw

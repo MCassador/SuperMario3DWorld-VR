@@ -54,8 +54,7 @@ MCassador".
 - **Corpo:** corpo na 1ª pessoa (a cabeça fica sempre escondida), corpo gira com a visão,
   braços (do jogo ou até as luvas), corpo acompanha a câmera, tamanho das luvas, luvas VR.
 - **Visão:** recentralizar a visão (A; o lugar e a direção para onde você olha viram o centro),
-  altura dos olhos (por personagem ou a do Mario), ajuste da altura (-30 a +30 unidades, em
-  `mtEyeFit+20`), tamanho do mundo (75% a 200%; maior = o mundo parece maior; muda a escala da
+  tamanho do mundo (75% a 200%; maior = o mundo parece maior; muda a escala da
   camada VR, então os gestos também escalam), giro com o analógico (suave, 30°, 45°, 55°, 60°,
   90°), afastamento máximo na 1ª pessoa, distância da câmera atrás, vinheta ao andar
   (desligada, fraca, média, forte: escurece as bordas da visão na 1ª pessoa enquanto o
@@ -68,7 +67,7 @@ pela `cemuvr_layer.dll` e acha os ajustes do patch pela tabela `mtMenuTable` (ma
 
 - mão esquerda: X corre, Y arremessa, o gatilho é ZL, o grip é L (e fecha a luva), o botão de
   menu é Plus, o clique do analógico é Minus
-- mão direita: A pula, B corre, **segurar o gatilho corre** (é o X do jogo), o grip é R (e fecha
+- mão direita: A pula, B só corre (não ataca), **segurar o gatilho corre** (é o X do jogo, e ataca), o grip é R (e fecha
   a luva)
 - na primeira pessoa, **segurando o grip e encostando** num casco, bola, bloco etc. o Mario pega
   (sem chutar) e ele fica na mão do grip; soltar o grip arremessa (`mtGrab`: ganchos `0x02289430`,
@@ -364,6 +363,76 @@ modificações feitas por **MCassador**:
 O GamePad continua funcionando ao mesmo tempo, botão por botão. Não é preciso mapear
 nada no Cemu para os controles - mas o controle emulado 1 precisa ser um
 **Wii U GamePad**, porque é esse o caminho por onde os controles chegam.
+
+## PS VR2 (controles Sense)
+
+No PC, o SteamVR apresenta os controles Sense ao jogo como controles Touch (não existe um perfil OpenXR próprio da Sony), então
+valem as mesmas ações dos controles do Quest. Correspondência (a confirmar no seu aparelho):
+
+| Sense | Equivale a | No jogo |
+| --- | --- | --- |
+| Direito: Cruz (X) | A | pula |
+| Direito: Círculo | B | corre |
+| Direito: R2 (gatilho, segurar) | gatilho | corre |
+| Direito: R1 | grip | R (fecha a luva; pega objetos, soco) |
+| Direito: R3 (clique do analógico) | clique do analógico | alterna diorama / primeira pessoa |
+| Direito: analógico | analógico direito | olhar e girar |
+| Esquerdo: Quadrado | X | corre |
+| Esquerdo: Triângulo | Y | arremessa |
+| Esquerdo: L2 | gatilho | ZL |
+| Esquerdo: L1 | grip | L (fecha a luva) |
+| Esquerdo: L3 (clique do analógico) | clique do analógico | Minus |
+| Esquerdo: Create | Menu | Plus (pausa), se o SteamVR ligar o botão |
+| Esquerdo: analógico | analógico esquerdo | move o personagem |
+| Círculo + Triângulo juntos | B + Y | abre o menu da VR |
+
+O botão Options fica com o SteamVR. Dá para mudar a ligação dos botões em SteamVR > Configurações > Controles >
+Gerenciar associações de controle.
+
+## Cores em runtimes sRGB
+
+O log `cemuvr_layer.log` mostra o formato escolhido (`xr.swapchain.format dxgi=28` = UNORM, `dxgi=29` = sRGB) e, no caso
+sRGB, a linha `interop.color ... transfer=linear_to_srgb`. Para testar o caminho sRGB num headset que também oferece
+UNORM, abra o jogo de um PowerShell com `$env:CEMUVR_FORCE_SRGB="1"` e depois `.\Start-VR.cmd`; as cores devem ficar
+iguais às do modo normal. `$env:CEMUVR_SRGB_RAW="1"` junto volta à cópia crua (a imagem fica mais escura: serve só
+para comparar).
+
+## Brilho das luvas
+
+Em primeira pessoa a luva branca (e a mão da Peach) estourava no sol. A camada VR guarda uma cópia
+dos shaders das luvas e, só em primeira pessoa e só nos desenhos das luvas, limita a luz do ambiente,
+zera o reflexo e o brilho especular e escurece um pouco a cor. O resto do jogo não muda. Os valores
+ficam em `layer\glove-shine.txt` (uma chave e um número por linha; vale ao reiniciar o Cemu):
+
+- `scale 0` - reflexo do ambiente na luva (0 = sem; o original é 1).
+- `cap 0.5` - limite da luz do ambiente na luva (maior = mais clara; 0 desliga esta parte).
+- `spec 0` - brilho especular (0 = fosco; 1 = o original).
+- `albedo 0.75` - cor da luva (1 = o original; menor = mais escura).
+- `off` numa linha sozinha desliga tudo.
+
+Na primeira vez que abrir o jogo com esta versão o Cemu compila as cópias dos shaders e pode dar
+algumas travadinhas; depois fica no cache. A roupa branca do Mario de fogo não é luva e ainda não
+recebe esse tratamento. O log `cemuvr_layer.log` (na pasta do Cemu) mostra a linha `glove draws: B=...`
+para conferir que as cópias estão em uso.
+
+## Roupa-caixa, corpo que acompanha o giro e alturas do menu
+
+- **Roupa-caixa (caixa vermelha com caveira, "Bill Box"):** vestida, os olhos sobem (padrão +40; item "Altura com a
+  roupa-caixa" da aba Visão), o corpo, os braços e as luvas do Mario não são desenhados, e a caixa gira junto com
+  a visão como o corpo normal gira. A caixa é achada pelo nome do modelo (`BoxKiller`) estar em volta dos olhos.
+- **Corpo acompanha o giro real** (aba Corpo, ligado): a camada VR calcula para onde o tronco está virado (para onde
+  os dois controles apontam, ou a cabeça sozinha, com folga) e, quando isso fica fora do "frente" da sala por
+  tempo suficiente (25° por cerca de 0,07 s com os controles; 30° por 0,25 s só com a cabeça), gira ao mesmo tempo o
+  "frente" da sala e o giro do analógico do próprio jogo pelo mesmo ângulo: a imagem não muda, mas o personagem passa
+  a olhar para onde o corpo está. Não dispara enquanto o analógico direito está em uso. Desligando o item, o corpo
+  volta a olhar só para a frente da sala.
+- **Giro de 45° do analógico direito:** o patch põe uma máscara (`mtPipeEye+36`) que não desenha os modelos do jogador
+  (corpo, braços, luvas) nos próximos passos de olho (0x3F, cerca de 3 quadros), checada no começo da regra que
+  esconde o corpo (`mtHideShape`).
+- **Alturas (aba Visão / Conforto do menu):** "Altura no Capitão Toad" (padrão -45), "Altura dos menus no mapa"
+  (padrão -20 cm) e "Altura dos menus na fase" (padrão +60 cm; antes fixo em +120).
+- **Altura da câmera ao sentar/abaixar:** quando a cabeça fica parada e mais baixa por cerca de 1 s, a altura "de pé" é
+  reaprendida em poucos segundos (a menos que "Agachar de verdade" esteja ligado).
 
 ## Trocando entre diorama e primeira pessoa
 

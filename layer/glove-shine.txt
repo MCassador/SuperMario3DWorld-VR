@@ -1,0 +1,4 @@
+scale 0
+cap 0.5
+spec 0
+albedo 0.75

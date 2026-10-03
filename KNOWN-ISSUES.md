@@ -33,6 +33,19 @@ tamanho das mãos, entre outros. O que segue é o que ainda falta ou não foi co
   que ele compilou bem na hora certa. Se não mudar nada visível, me avise para tentarmos outro dos
   shaders despejados no mesmo instante.
 
+## Novidades da Version 1.9 ainda em ajuste
+
+- **Corpo que acompanha o giro real:** melhorou bastante, mas ainda não é perfeito: com os controles balançando muito
+  (socos, arremessos) ele pode girar o personagem sem você ter virado o corpo, e braço/luva podem "demorar" um pouco
+  a voltar depois do giro. Dá para desligar no menu (aba Corpo).
+- **Vidro dos tubos transparentes:** em primeira pessoa, em alguns trechos do percurso o vidro do tubo pode sumir ao
+  redor dos olhos.
+- **Roupa branca do Mario de fogo:** o brilho excessivo dela ainda não tem tratamento (só as luvas têm).
+- **Cores em runtimes sRGB (SteamVR/PSVR2):** o caminho de cor foi portado do Alpha 1.4 do Destroyjevski, mas ainda
+  não foi testado em um aparelho que só ofereça sRGB.
+- **Visibilidade e transições do Mundo 1** (portadas do Alpha 1.4): ainda sem validação completa.
+- **Soco (grip fechado):** recurso novo, com pouco teste em jogo; liga/desliga no menu (aba Soco).
+
 ## Renderização e desempenho
 
 - Geometria fora da visão de câmera original pode faltar, ficar exposta ou visivelmente

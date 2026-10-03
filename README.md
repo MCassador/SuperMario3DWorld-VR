@@ -70,10 +70,10 @@ números e interruptores exatos, em [INSTALL.md](INSTALL.md); resumo:
   cabeça olha, 1:1 (o "imã" do jogo que endireita o analógico fica desligado na primeira pessoa);
   no menu dá para trocar para onde o controle direito aponta (com sensibilidade ajustável) ou
   para o jeito do jogo.
-- **Tubos transparentes:** ao entrar num tubo transparente em primeira pessoa a câmera vai para
-  trás do Mario (câmera 200) e volta ao sair (opcional no menu).
-- **Câmera e altura:** ajuste da câmera para frente/trás dos olhos do Mario e duas alturas (Mario
-  grande e Mario pequeno), no menu.
+- **Tubos transparentes:** em primeira pessoa os olhos descem para dentro do tubo durante o percurso, para
+  todos os personagens; a opção "Câmera 200" continua disponível no menu. Em alguns trechos o vidro do tubo
+  pode sumir ao redor do olho (problema conhecido).
+- **Câmera e altura:** ajuste da câmera para frente/trás dos olhos do Mario, no menu.
 - **Horizonte nivelado (decoupled pitch):** na escolha de fases, nas fases vistas de cima e nas
   cenas, a câmera do jogo fica nivelada (mesmo lugar e direção, sem inclinar para baixo); você
   olha para baixo com a cabeça. Opcional no menu.
@@ -107,6 +107,39 @@ números e interruptores exatos, em [INSTALL.md](INSTALL.md); resumo:
   personagem.
 - **Correções:** o casco é arremessado para onde você mira e as silhuetas pretas ao trocar de
   mapa foram corrigidas.
+- **Soco:** segurando o grip a luva fecha o punho; dar um soco rápido num inimigo acerta ele, sem
+  precisar pular em cima. Aba "Soco" do menu: liga/desliga, força e efeito.
+- **Altura dos olhos:** Peach, Rosalina, o Mario gigante (Megacogumelo) e o gato usam a altura de
+  olhos do Mario; as luvas do Mario gigante ficam um pouco menores.
+- **Braços:** não somem nem piscam mais ao virar e andar, e a Peach e a Rosalina têm a luva e o
+  braço no tamanho certo.
+- **Luvas sem brilho:** em primeira pessoa a luva branca não estoura mais no sol (veja
+  "Brilho das luvas" no INSTALL.md; ajustável em `layer\glove-shine.txt`).
+- **Cores em runtimes sRGB (SteamVR/PSVR2):** quando o OpenXR só oferece swapchain sRGB, a imagem dos olhos
+  e do HUD é codificada para sRGB (antes ficava mais escura e saturada). Em runtimes UNORM nada muda.
+- **Botão B:** agora só corre (não solta mais fogo nem arranha); o ataque fica no gesto de arremesso,
+  no gatilho e no X da esquerda.
+- **Visibilidade e transições:** menos tubos e rotas distantes sobre o mapa do Mundo 1, planos do mapa
+  bônus separados, a sala solta ao lado do Mundo 2 escondida, a sala bônus remota da primeira fase
+  corrigida, sem o clarão ciano, e as transições do título e da escolha de arquivo na tela de menu
+  (trazido do Alpha 1.4 do Destroyjevski).
+- **Roupa-caixa (caixa vermelha com caveira, "Bill Box"):** em primeira pessoa a câmera não fica mais
+  dentro da caixa. Com ela vestida os olhos sobem, o corpo, os braços e as luvas somem (a caixa fica
+  visível, é a roupa) e ela gira junto com a visão, como o corpo do Mario. A altura ajusta-se no menu
+  ("Altura com a roupa-caixa").
+- **Menus e HUD mais baixos:** na tela de escolha de fases (mapa) e dentro das fases o HUD e as caixas de
+  diálogo ficam mais baixos, sem precisar erguer a cabeça. Ajuste no menu da aba Conforto ("Altura dos
+  menus no mapa" e "Altura dos menus na fase").
+- **Capitão Toad:** nas fases dele os olhos ficam mais baixos, perto da gola vermelha, para a lanterna do
+  capacete não atrapalhar ("Altura no Capitão Toad" no menu, aba Visão).
+- **O corpo acompanha o giro real:** ao virar o corpo de verdade, o personagem vira junto (a frente do analógico e os
+  braços passam a ficar do lado certo) sem a imagem pular, em vez de os braços se cruzarem e esticarem. Dispara
+  sozinho, em uma fração de segundo, quando o tronco (pelos controles) ou a cabeça fica virado para o lado. Opção
+  "Corpo acompanha o giro real" na aba Corpo do menu (ligada).
+- **Giro de 45° do analógico direito:** braço e luva somem por uns 40 ms no giro, para não aparecer um braço
+  "fantasma" apontando para onde a luva estava. A altura da câmera também se reajusta em poucos segundos
+  depois de sentar ou se abaixar (antes demorava cerca de um minuto).
+- **Menu:** o item de altura dos olhos saiu; vale sempre a câmera do Mario.
 
 Veja as [notas de lançamento](RELEASE_NOTES.md) para o histórico da base VR e
 [INSTALL.md](INSTALL.md) para os controles e todos os interruptores das modificações
