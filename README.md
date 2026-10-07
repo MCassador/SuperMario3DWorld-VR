@@ -1,6 +1,6 @@
 # Super Mario 3D World VR
 
-**Version 1** · Windows x64 · Cemu · OpenXR
+**Version 2.0** · Windows x64 · Cemu · OpenXR
 
 Renderização estéreo e rastreamento de cabeça em seis graus de liberdade para a versão de Wii U
 de **Super Mario 3D World**. Jogue com um controle (gamepad) no modo diorama ou em primeira pessoa.
@@ -140,6 +140,20 @@ números e interruptores exatos, em [INSTALL.md](INSTALL.md); resumo:
   "fantasma" apontando para onde a luva estava. A altura da câmera também se reajusta em poucos segundos
   depois de sentar ou se abaixar (antes demorava cerca de um minuto).
 - **Menu:** o item de altura dos olhos saiu; vale sempre a câmera do Mario.
+- **Menu novo (Version 2.0):** o menu do óculos (B + Y) ganhou o mesmo visual dos menus do Mario Galaxy VR: painel mais largo,
+  uma linha (cartão) por opção com o valor num quadro à direita, barra de posição nos ajustes, abas em pílula, lista que rola
+  e as teclas no rodapé. A aba Controles tem duas páginas (analógico para cima/baixo).
+- **Idioma:** novo item "Idioma / Language" (primeira linha da aba Corpo): Português ou English. Na primeira vez segue o idioma
+  do Windows.
+- **Ajustes partindo do zero:** os ajustes finos (altura dos olhos, luvas, câmera) aparecem em 0; os valores afinados ficam
+  embutidos por baixo, então o jogo se comporta como antes e o menu fica fácil de entender.
+- **Imagem de abertura:** a tela do próprio jogo "Para jogar este título pode utilizar os seguintes comandos" (lista de
+  controles do Wii U) é coberta no óculos por uma imagem do mod (`layer\cemuvr-splash.bmp`; troque pelo arquivo que quiser, BMP de
+  24 ou 32 bits; apague o arquivo para voltar a ver a tela do jogo).
+- **Giro de 45° sem o vulto do braço:** depois do giro o braço não "adianta" mais o movimento da luva por uns 5 quadros; antes
+  ele era montado apontando além da luva (medido em 49 giros: 24 a 35 unidades além, esticado 2,3x em vez de 1,7x).
+- **Mario Gato:** o mergulho (ataque do gato) não derruba mais o jogo quando o patch ainda não tem o jogador identificado.
+- **Recentralizar:** ao recentralizar a visão o menu volta para a frente da sua cabeça.
 
 Veja as [notas de lançamento](RELEASE_NOTES.md) para o histórico da base VR e
 [INSTALL.md](INSTALL.md) para os controles e todos os interruptores das modificações
@@ -148,13 +162,18 @@ acima. Iluminação, sombras e efeitos de profundidade ainda têm limitações; 
 
 ## Para começar
 
-1. Baixe o **ZIP de instalação da Version 1** em [Releases](../../releases).
-2. Coloque a pasta `Mario3DWorld-VR` ao lado do `Cemu.exe`.
-3. Feche o Cemu e rode `Start-VR.cmd`.
-4. Abra Super Mario 3D World no Cemu e jogue com o gamepad ou com os controles VR.
+**ZIP com o Cemu incluído (recomendado):**
 
-Use o ZIP de instalação para jogar. O **Code → Download ZIP** deste repositório tem os mesmos
-arquivos, já prontos (não precisa compilar): só renomeie a pasta extraída para `Mario3DWorld-VR`.
+1. Baixe o **ZIP de instalação da Version 2.0** em [Releases](../../releases) e extraia em qualquer pasta.
+2. Abra `Cemu_2.6\Cemu.exe` uma vez, em *Opções → Configurações gerais → Caminhos dos jogos* adicione a pasta do seu
+   Super Mario 3D World (base europeia v0) e confirme que o jogo abre com um gamepad.
+3. Feche o Cemu e rode `Cemu_2.6\Mario3DWorld-VR\Start-VR.cmd` com o runtime OpenXR do seu headset ativo.
+4. Abra Super Mario 3D World no Cemu e jogue com o gamepad ou com os controles VR (B + Y abre o menu VR).
+
+**Já tem o Cemu 2.6:** copie só a pasta `Mario3DWorld-VR` do ZIP para ao lado do seu `Cemu.exe` e rode `Start-VR.cmd`.
+
+O **Code → Download ZIP** deste repositório tem os arquivos do mod, já prontos (não precisa compilar): só renomeie a pasta
+extraída para `Mario3DWorld-VR`.
 
 Veja [INSTALL.md](INSTALL.md) para configurar o headset, opções gráficas e de FPS.
 
@@ -171,7 +190,7 @@ Veja [INSTALL.md](INSTALL.md) para configurar o headset, opções gráficas e de
 
 Os testes de headset usaram uma RTX 4080 e uma AMD RX 9060 XT, e Virtual Desktop/VDXR a
 120 Hz. Outros hardwares, runtimes e versões do jogo não foram validados.
-Cemu e o jogo não estão incluídos.
+O ZIP de instalação traz o Cemu 2.6 sem modificações (veja THIRD-PARTY.txt); o jogo não está incluído.
 
 ## Controles
 

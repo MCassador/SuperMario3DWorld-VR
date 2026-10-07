@@ -33,8 +33,14 @@ tamanho das mãos, entre outros. O que segue é o que ainda falta ou não foi co
   que ele compilou bem na hora certa. Se não mudar nada visível, me avise para tentarmos outro dos
   shaders despejados no mesmo instante.
 
-## Novidades da Version 1.9 ainda em ajuste
+## Novidades das Versions 1.9 e 2.0 ainda em ajuste
 
+- **Imagem de abertura:** só cobre a primeira tela plana de cada sessão; se o jogo mostrar a lista de controles num outro
+  momento, ela aparece normalmente. Não foi testada com todos os runtimes.
+- **Menu novo:** o tamanho e a distância do painel (1,0 m de largura, a 0,9 m) foram escolhidos em imagens geradas no PC; se ficar
+  grande ou pequeno demais no seu óculos, avise.
+- **Giro de 45° e braço:** depois da correção do "lead" o vulto do braço some nas medições, mas o ombro do personagem ainda
+  pula no quadro seguinte ao giro (a máscara esconde esse quadro).
 - **Corpo que acompanha o giro real:** melhorou bastante, mas ainda não é perfeito: com os controles balançando muito
   (socos, arremessos) ele pode girar o personagem sem você ter virado o corpo, e braço/luva podem "demorar" um pouco
   a voltar depois do giro. Dá para desligar no menu (aba Corpo).

@@ -16,3 +16,7 @@ on how that loader was built.
 Vulkan headers and Windows SDK/D3D11 system libraries are build dependencies.
 The community Super Mario 3D World resolution graphic pack by Crementif and
 getdls is used in the documented setup but is not redistributed here.
+
+Cemu 2.6 (https://github.com/cemu-project/Cemu): the install archive of Version 2.0 contains the unmodified Cemu 2.6 Windows x64
+release (Cemu.exe, resources, gameProfiles) for convenience. Cemu is licensed under the Mozilla Public License 2.0; the licence text is in
+licenses/Cemu-MPL-2.0.txt and the source code is at the address above. Neither the game nor any key or firmware file is included.

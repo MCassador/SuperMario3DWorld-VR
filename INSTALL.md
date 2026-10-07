@@ -9,14 +9,20 @@
 - Para o preset padrão de 120 FPS, use uma taxa de atualização de headset de 120 Hz.
 - Feche o Cemu antes de iniciar uma sessão VR.
 
-## Instalar a Version 1
+## Instalar a Version 2.0
 
-1. Extraia `SuperMario3DWorld-VR-Version-1-install.zip`.
-2. Copie a pasta **`Mario3DWorld-VR`** para dentro da sua pasta do Cemu, ao lado do `Cemu.exe`.
-3. Abra essa pasta e rode **`Start-VR.cmd`**. O jogo inicia no modo diorama.
+O ZIP de instalação traz **o Cemu 2.6 (sem modificações) e o mod**, já na pasta certa:
+
+1. Extraia `SuperMario3DWorld-VR-Version-2.0-install.zip` em qualquer pasta. Dentro dele está a pasta `Cemu_2.6`, com o
+   `Cemu.exe` e, ao lado, a pasta `Mario3DWorld-VR`.
+2. Abra `Cemu_2.6\Cemu.exe` uma vez e, em *Opções → Configurações gerais → Caminhos dos jogos*, adicione a pasta do seu
+   Super Mario 3D World (base europeia v0, sem atualização). Confirme que o jogo roda com um gamepad. O ZIP **não** inclui o
+   jogo nem chaves; o Cemu pode pedir o Visual C++ Redistributable da Microsoft se o Windows não o tiver.
+3. Feche o Cemu, abra `Cemu_2.6\Mario3DWorld-VR` e rode **`Start-VR.cmd`**. O jogo inicia no modo diorama.
 4. Abra o jogo pela lista de jogos do Cemu.
 5. Deixe a janela do launcher aberta. Feche o Cemu normalmente para encerrar a sessão.
 
+Quem já tem o Cemu 2.6 pode copiar só a pasta **`Mario3DWorld-VR`** para dentro da pasta do seu Cemu, ao lado do `Cemu.exe`.
 Se o launcher não encontrar o Cemu, ele pede para você selecionar o `Cemu.exe` uma vez.
 O ZIP de instalação já inclui a camada VR pronta; não é preciso compilar nada.
 
@@ -48,7 +54,7 @@ Os controles VR agem como o GamePad.
 
 **Menu de opções VR:** aperte **B + Y juntos** para abrir (ou fechar) um menu na sua frente.
 Enquanto ele está aberto o jogo não recebe os botões nem os analógicos (o Mario fica parado).
-Analógico para os lados troca de aba (Corpo, Visão, Controles, Créditos); para cima/baixo
+Analógico para os lados troca de aba (Corpo, Visão, Conforto, Soco, Controles, Créditos); para cima/baixo
 escolhe a opção; **A** muda o valor (X volta um); B ou B + Y fecha. No rodapé: "Feito por:
 MCassador".
 - **Corpo:** corpo na 1ª pessoa (a cabeça fica sempre escondida), corpo gira com a visão,
@@ -414,6 +420,24 @@ Na primeira vez que abrir o jogo com esta versão o Cemu compila as cópias dos 
 algumas travadinhas; depois fica no cache. A roupa branca do Mario de fogo não é luva e ainda não
 recebe esse tratamento. O log `cemuvr_layer.log` (na pasta do Cemu) mostra a linha `glove draws: B=...`
 para conferir que as cópias estão em uso.
+
+## Novidades da Version 2.0
+
+- **Menu:** novo visual (mesmo dos menus do Mario Galaxy VR), 1040 x 940 pixels e 1,0 m de largura no óculos (era 0,75 m).
+  A lista rola; a aba Controles tem duas páginas (analógico para cima/baixo). Primeira linha da aba Corpo: **Idioma / Language**
+  (Português / English; segue o idioma do Windows na primeira vez). Ao recentralizar a visão o menu volta para a frente da cabeça.
+- **Ajustes em 0:** altura dos olhos (Mario grande / pequeno), câmera frente/trás do corpo, inclinação e giro das luvas e luvas
+  frente/trás aparecem em 0; os valores afinados (olhos +5 e +25, corpo +15, luvas +5° e -5°, luvas +25) ficam como base por
+  baixo. As chaves de `vr-menu.ini` desses seis itens têm nome novo (`eyeadjust2`, `eyeadjustsmall2`, `camshift2`, `glovepitch2`,
+  `gloveyaw2`, `glovefwd3`): valores salvos por versões antigas são ignorados.
+- **Imagem de abertura (`layer\cemuvr-splash.bmp`):** no início da sessão o jogo mostra uma tela plana com a lista de controles do
+  Wii U. A camada troca o conteúdo dessa primeira tela plana (no máximo 30 s, só nos primeiros 40 s da sessão) pela imagem do
+  arquivo (BMP 24 ou 32 bits, até 4096 px). Sem o arquivo, nada muda. Log: `boot.splash start / uploaded / end`.
+- **Giro de 45° e braço:** o "lead" do braço (a luva é seguida um passo à frente) fica desligado por 5 quadros depois de um giro
+  de 45° (palavra `mtSnapLead`, o quadro do giro em `mtFireStat+4`); o pulo da luva causado pelo giro era tomado por movimento
+  da mão e o braço era montado apontando além da luva logo depois da máscara.
+- **Mario Gato:** `mtCatDive` confere se o jogador guardado em `mtHideActor` é um ponteiro de objeto válido antes de usá-lo; antes
+  um valor inválido derrubava o Cemu no mergulho.
 
 ## Roupa-caixa, corpo que acompanha o giro e alturas do menu
 

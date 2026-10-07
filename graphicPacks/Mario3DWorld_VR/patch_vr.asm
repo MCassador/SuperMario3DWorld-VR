@@ -4590,6 +4590,12 @@ lis r7, mtPipeEye@ha
 addi r7, r7, mtPipeEye@l
 li r9, 0x3F
 stw r9, 36(r7)
+lis r7, mtFireStat@ha
+addi r7, r7, mtFireStat@l
+lwz r9, 4(r7)
+lis r7, mtSnapLead@ha
+addi r7, r7, mtSnapLead@l
+stw r9, 0(r7)
 b mrLookNoTurn
 mrLookNoReset:
 lfs f0, 16(r8)
@@ -8799,6 +8805,14 @@ lis r7, 0x0180
 lwz r0, 152(r7)
 cmpwi r0, 1
 bne mtArmLeadNoL
+lis r7, mtSnapLead@ha
+lwz r0, mtSnapLead@l(r7)
+lis r7, mtFireStat@ha
+addi r7, r7, mtFireStat@l
+lwz r7, 4(r7)
+subf r0, r0, r7
+cmplwi r0, 5
+blt mtArmLeadNoL
 lis r7, mtGlDbg@ha
 addi r7, r7, mtGlDbg@l
 lfs f1, 36(r8)
@@ -9854,6 +9868,14 @@ lis r7, 0x0180
 lwz r0, 152(r7)
 cmpwi r0, 1
 bne mtArmLeadNoR
+lis r7, mtSnapLead@ha
+lwz r0, mtSnapLead@l(r7)
+lis r7, mtFireStat@ha
+addi r7, r7, mtFireStat@l
+lwz r7, 4(r7)
+subf r0, r0, r7
+cmplwi r0, 5
+blt mtArmLeadNoR
 lis r7, mtGlDbg@ha
 addi r7, r7, mtGlDbg@l
 lfs f1, 36(r8)
@@ -14887,7 +14909,25 @@ lwz r5, 4(r31)
 lwz r5, 0(r5)
 lis r4, mtHideActor@ha
 lwz r4, mtHideActor@l(r4)
+; mtHideActor is whatever the hide hook saw last (the other readers check it as well): a value that is not an object
+; (seen: 0x80840000, 07/10 crash at this very load) is skipped instead of being followed
+lis r0, 0x1000
+cmplw r4, r0
+blt mtCatDiveDone
+lis r0, 0x5000
+cmplw r4, r0
+bge mtCatDiveDone
+andi. r0, r4, 3
+bne mtCatDiveDone
 lwz r4, 0xC0(r4)
+lis r0, 0x1000
+cmplw r4, r0
+blt mtCatDiveDone
+lis r0, 0x5000
+cmplw r4, r0
+bge mtCatDiveDone
+andi. r0, r4, 3
+bne mtCatDiveDone
 lwz r4, 0(r4)
 cmpw r4, r5
 bne mtCatDiveDone
@@ -19049,6 +19089,11 @@ mtHandShift:
 .int 0
 .int 0
 .int 0
+.int 0
+; mtSnapLead: the game frame (mtFireStat+4) of the last snap turn. The arm's lead (the glove's last step of travel carried on, below) must not see the glove's jump that the
+; snap itself causes: for 5 frames from the snap the lead is off (07/10 measurement over 49 snaps: the first arm built with the new glove place was aimed 24 (left) / 35 (right)
+; units beyond the glove and stretched 2.3x instead of 1.7x, one frame after the snap mask had ended - the "vulto" of the arm).
+mtSnapLead:
 .int 0
 ; mtGlDbg: +0 / +12 the previous step's glove position (left / right), +24 / +28 skeleton roots seen at this step's left glove / the previous step's,
 ; +32 / +36 the same for the right glove, +40 skeleton steps seen, +44 diagnostic on (1), +48 the squared distance (game units) that counts as a
