@@ -7580,6 +7580,11 @@ addi r7, r7, mtPipeEye@l
 lwz r0, 24(r7)
 cmpwi r0, 0
 bgt mtHideDo
+; Captain Toad's stages (mtPipeEye+16 = 1, the action name contains KinopioBrigade): only the gloves - no body shape and no part
+; hanging from it (user 09/10: "remova o corpo inteiro e deixe so as luvas")
+lwz r0, 16(r7)
+cmpwi r0, 0
+bne mtHideZero
 lwz r0, 20(r8)
 cmpw r3, r0
 bne mtHidePart

@@ -9,11 +9,11 @@
 - Para o preset padrão de 120 FPS, use uma taxa de atualização de headset de 120 Hz.
 - Feche o Cemu antes de iniciar uma sessão VR.
 
-## Instalar a Version 2.0
+## Instalar a Version 2.1
 
 O ZIP de instalação traz **o Cemu 2.6 (sem modificações) e o mod**, já na pasta certa:
 
-1. Extraia `SuperMario3DWorld-VR-Version-2.0-install.zip` em qualquer pasta. Dentro dele está a pasta `Cemu_2.6`, com o
+1. Extraia `SuperMario3DWorld-VR-Version-2.1-install.zip` em qualquer pasta. Dentro dele está a pasta `Cemu_2.6`, com o
    `Cemu.exe` e, ao lado, a pasta `Mario3DWorld-VR`.
 2. Abra `Cemu_2.6\Cemu.exe` uma vez e, em *Opções → Configurações gerais → Caminhos dos jogos*, adicione a pasta do seu
    Super Mario 3D World (base europeia v0, sem atualização). Confirme que o jogo roda com um gamepad. O ZIP **não** inclui o
@@ -420,6 +420,11 @@ Na primeira vez que abrir o jogo com esta versão o Cemu compila as cópias dos 
 algumas travadinhas; depois fica no cache. A roupa branca do Mario de fogo não é luva e ainda não
 recebe esse tratamento. O log `cemuvr_layer.log` (na pasta do Cemu) mostra a linha `glove draws: B=...`
 para conferir que as cópias estão em uso.
+
+## Novidades da Version 2.1
+
+- **Capitão Toad:** nas fases dele (ação do jogador com `KinopioBrigade`), em 1ª pessoa, nenhuma forma do corpo nem parte pendurada
+  é desenhada; só as luvas. A lanterna do capacete não é parte do corpo e pode continuar aparecendo.
 
 ## Novidades da Version 2.0
 

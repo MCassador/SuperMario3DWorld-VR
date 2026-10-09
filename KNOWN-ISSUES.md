@@ -157,3 +157,4 @@ estranho (veja "Relatando um problema" acima).
   travava para sempre. **Correção:** as duas esperas agora têm um limite de 2 segundos; ao
   vencer o prazo, o código já tratava isso como uma falha normal (descarta aquele quadro do
   HUD ou daquele olho e segue), então nada mudou no caminho de sucesso.
+- **Capitão Toad (2.1):** o corpo escondido nas fases dele foi pouco testado; a lanterna do capacete pode continuar aparecendo.
