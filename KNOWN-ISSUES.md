@@ -79,8 +79,8 @@ tamanho das mãos, entre outros. O que segue é o que ainda falta ou não foi co
   terço de segundo (veja `mtHandCtl`+80 em INSTALL.md) para ele valer. Se sua luva já estiver
   desviada, apague `hand-presets.txt` (ou edite para os valores corretos: Mario esquerda 11 /
   direita 8, Peach esquerda 2 / direita 2) e reinicie pelo `Start-VR`.
-- A tela de toque do GamePad não tem equivalente num controle VR e não pode ser alcançada
-  por um. O microfone pode ser simulado: levar a mão esquerda perto da boca para "soprar"
+- A tela de toque do GamePad é alcançada pelo controle direito (Version 2.2: grip mira, grip + gatilho toca); fora das fases
+  (menus, mapa) ela continua só com o mouse no Cemu. O microfone pode ser simulado: levar a mão esquerda perto da boca para "soprar"
   (veja `mtMic` em INSTALL.md; ainda não testado numa fase do Capitão Toad), ou escolher o
   microfone do headset como entrada de áudio do Cemu.
 - A bola de fogo sai da luva direita e voa na direção que o controle direito aponta (veja
@@ -158,3 +158,5 @@ estranho (veja "Relatando um problema" acima).
   vencer o prazo, o código já tratava isso como uma falha normal (descarta aquele quadro do
   HUD ou daquele olho e segue), então nada mudou no caminho de sucesso.
 - **Capitão Toad (2.1):** o corpo escondido nas fases dele foi pouco testado; a lanterna do capacete pode continuar aparecendo.
+- **Version 2.2:** o toque com o controle, a lanterna do Capitão Toad seguindo a cabeça e a câmera 200 em arco são novos, com
+  pouco teste em jogo. Se o arco ficar alto ou baixo demais, os ângulos ficam em `mtArc` no patch.

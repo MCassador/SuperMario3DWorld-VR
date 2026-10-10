@@ -1,6 +1,6 @@
 # Super Mario 3D World VR
 
-**Version 2.1** · Windows x64 · Cemu · OpenXR
+**Version 2.2** · Windows x64 · Cemu · OpenXR
 
 Renderização estéreo e rastreamento de cabeça em seis graus de liberdade para a versão de Wii U
 de **Super Mario 3D World**. Jogue com um controle (gamepad) no modo diorama ou em primeira pessoa.
@@ -140,6 +140,14 @@ números e interruptores exatos, em [INSTALL.md](INSTALL.md); resumo:
   "fantasma" apontando para onde a luva estava. A altura da câmera também se reajusta em poucos segundos
   depois de sentar ou se abaixar (antes demorava cerca de um minuto).
 - **Menu:** o item de altura dos olhos saiu; vale sempre a câmera do Mario.
+- **Tocar na tela com o controle (Version 2.2):** segure o grip direito para mirar: a mãozinha do jogo aparece onde o
+  controle direito aponta, sem tocar em nada. Com o grip segurado, o gatilho direito toca de verdade (abre e ativa as
+  plataformas de toque). Vale na primeira pessoa, na câmera 200 e na câmera do jogo.
+- **Lanterna do Capitão Toad (Version 2.2):** em primeira pessoa a luz da lanterna segue para onde o óculos olha (para
+  os lados, para cima e para baixo), e não mais o corpo do personagem.
+- **Câmera 200 em arco (Version 2.2):** o analógico direito aproxima e afasta a câmera num arco em volta do Mario: perto
+  ela desce, longe ela sobe e olha por cima. Na distância padrão continua igual.
+- **Controles (Version 2.2):** o X esquerdo voltou a ser o X do jogo (correr, pegar, bola de fogo).
 - **Capitão Toad (Version 2.1):** nas fases dele, em 1ª pessoa, o corpo inteiro some e ficam só as luvas nos controles.
 - **Menu novo (Version 2.0):** o menu do óculos (B + Y) ganhou o mesmo visual dos menus do Mario Galaxy VR: painel mais largo,
   uma linha (cartão) por opção com o valor num quadro à direita, barra de posição nos ajustes, abas em pílula, lista que rola
@@ -165,7 +173,7 @@ acima. Iluminação, sombras e efeitos de profundidade ainda têm limitações; 
 
 **ZIP com o Cemu incluído (recomendado):**
 
-1. Baixe o **ZIP de instalação da Version 2.1** em [Releases](../../releases) e extraia em qualquer pasta.
+1. Baixe o **ZIP de instalação da Version 2.2** em [Releases](../../releases) e extraia em qualquer pasta.
 2. Abra `Cemu_2.6\Cemu.exe` uma vez, em *Opções → Configurações gerais → Caminhos dos jogos* adicione a pasta do seu
    Super Mario 3D World (base europeia v0) e confirme que o jogo abre com um gamepad.
 3. Feche o Cemu e rode `Cemu_2.6\Mario3DWorld-VR\Start-VR.cmd` com o runtime OpenXR do seu headset ativo.

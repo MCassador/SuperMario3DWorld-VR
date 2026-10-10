@@ -114,6 +114,10 @@ b rrAfterSecondDraw
 
 0x024DB304 = rrAfterBeforeCalc:
 rrBeforeCalc:
+; touch (tc*): the controller snapshot counts only once this calc has latched it
+lis r12, tcPadReady@ha
+li r11, 0
+stw r11, tcPadReady@l(r12)
 lis r12, mrCullCount@ha
 li r11, 0
 stw r11, mrCullCount@l(r12)
@@ -344,6 +348,29 @@ lwz r11, 8(r8)
 cmpw r7, r11
 bne rrPoseLatchDone
 stw r7, 0(r12)
+; touch (tc*): the controller generation (mtPad+0) ages while it repeats; four calc frames without a new one stop the touch input
+lis r9, tcGen@ha
+addi r9, r9, tcGen@l
+lwz r11, 0(r10)
+cmpwi r11, 0
+beq tcGenDone
+lwz r7, 4(r9)
+cmpw r7, r11
+beq tcGenRepeated
+stw r11, 4(r9)
+li r7, 0
+b tcGenAgeReady
+tcGenRepeated:
+lwz r7, 8(r9)
+cmpwi r7, 4
+bge tcGenDone
+addi r7, r7, 1
+tcGenAgeReady:
+stw r7, 8(r9)
+tcGenDone:
+li r11, 1
+lis r9, tcPadReady@ha
+stw r11, tcPadReady@l(r9)
 rrPoseLatchDone:
 ; The camera switch off the right controller's stick click. This path never
 ; touches Cemu's input configuration, which is where the reported failures live.
@@ -1482,6 +1509,18 @@ lwz r12, 24(r1)
 addi r1, r1, 0x20
 b mtPreparePose
 mtUseDiorama:
+; The close diorama (mode 2) is the diorama at half distance. Like first person it belongs to gameplay scenes; intro and world map stay
+; the diorama.
+lwz r0, 28(r8)
+cmpwi r0, 2
+bne mtUseDioramaZero
+lis r11, mrSceneClass@ha
+lwz r11, mrSceneClass@l(r11)
+lis r7, 0x1032
+ori r7, r7, 0x86DC
+cmpw r11, r7
+beq mtCineCheck
+mtUseDioramaZero:
 li r0, 0
 stw r0, 28(r8)
 ; Cutscene camera: in the stage scene, a camera whose target is not the player. mtCine is read
@@ -1491,6 +1530,7 @@ lis r11, mtCine@ha
 addi r11, r11, mtCine@l
 li r0, 0
 stw r0, 0(r11)
+stw r0, 12(r11)
 lis r7, mrSceneClass@ha
 lwz r7, mrSceneClass@l(r7)
 lis r0, 0x1032
@@ -1507,11 +1547,14 @@ bge mtCineYes
 andi. r0, r7, 3
 bne mtCineYes
 lwz r0, 0(r7)
+stw r7, 12(r11)
 lis r7, 0x1031
 ori r7, r7, 0x9EF4
 cmpw r0, r7
 beq mtCineDone
 mtCineYes:
+li r0, 0
+stw r0, 12(r11)
 li r0, 1
 stw r0, 0(r11)
 mtCineDone:
@@ -2300,6 +2343,84 @@ stfs f0, 44(r9)
 ; The whole distance goes straight back (level) instead of along the view's slope - looking up would
 ; otherwise send the camera down into the ground, looking down up into the air - and the part beyond
 ; the basic distance (mtLift+0) also lifts it, by mtLift+4 per unit. At distance 0 nothing changes.
+; Camera behind Mario on an arc (mtArc): level at the basic distance, down the arc closer, up the arc farther (see mtArc)
+lis r8, mtEyeBack@ha
+lwz r0, mtEyeBack@l(r8)
+cmpwi r0, 0
+ble mtLiftOld1
+lis r8, mtArc@ha
+addi r8, r8, mtArc@l
+lwz r0, 0(r8)
+cmpwi r0, 0
+beq mtLiftOld1
+lfs f2, 4(r8)
+.int 0xFC011000 ; fcmpu cr0, f1, f2
+bge mtArcUp1
+fsubs f4, f2, f1
+lfs f5, 8(r8)
+fsubs f5, f2, f5
+.int 0xEC842824 ; fdivs f4, f4, f5
+lfs f6, 16(r8)
+b mtArcFrac1
+mtArcUp1:
+fsubs f4, f1, f2
+lfs f5, 12(r8)
+fsubs f5, f5, f2
+.int 0xEC842824 ; fdivs f4, f4, f5
+lfs f6, 20(r8)
+mtArcFrac1:
+lfs f5, 24(r8)
+.int 0xFC042800 ; fcmpu cr0, f4, f5
+ble mtArcFracOk1
+fmr f4, f5
+mtArcFracOk1:
+fmuls f6, f6, f4
+fmuls f7, f6, f6
+fadds f8, f5, f7
+fsubs f7, f5, f7
+.int 0xECE74024 ; fdivs f7, f7, f8 (cos)
+lfs f9, 28(r8)
+fmuls f6, f6, f9
+.int 0xECC64024 ; fdivs f6, f6, f8 (sin)
+; |level back| of the view (back row x, z)
+lfs f8, 32(r9)
+fmuls f8, f8, f8
+lfs f9, 40(r9)
+fmuls f9, f9, f9
+fadds f8, f8, f9
+lfs f9, 32(r8)
+.int 0xFC084800 ; fcmpu cr0, f8, f9
+ble mtArcFlat1
+.int 0xFD204034 ; frsqrte f9, f8
+lfs f5, 36(r8)
+lfs f2, 40(r8)
+fmuls f4, f9, f9
+fmuls f4, f4, f8
+fmuls f4, f4, f5
+fsubs f4, f2, f4
+fmuls f9, f9, f4
+fmuls f4, f9, f9
+fmuls f4, f4, f8
+fmuls f4, f4, f5
+fsubs f4, f2, f4
+fmuls f9, f9, f4
+fmuls f7, f7, f9
+fmuls f7, f7, f1
+fsubs f7, f7, f1
+b mtArcK1
+mtArcFlat1:
+fsubs f7, f1, f1
+mtArcK1:
+lfs f9, 44(r9)
+fsubs f9, f9, f7
+stfs f9, 44(r9)
+fmuls f6, f6, f1
+fadds f9, f1, f7
+lfs f2, 36(r9)
+fmuls f9, f9, f2
+fsubs f8, f6, f9
+b mtLiftApply1
+mtLiftOld1:
 lis r8, mtLift@ha
 addi r8, r8, mtLift@l
 lfs f2, 0(r8)
@@ -2317,6 +2438,7 @@ fmuls f8, f8, f6
 lfs f9, 36(r9)
 fmuls f9, f9, f1
 fsubs f8, f8, f9
+mtLiftApply1:
 lfs f9, 4(r9)
 fmuls f9, f9, f8
 lfs f6, 12(r9)
@@ -2856,6 +2978,21 @@ fadds f5, f5, f1
 lis r8, rrDioramaAdvance@ha
 addi r8, r8, rrDioramaAdvance@l
 lfs f6, 0(r8)
+; Close diorama: A' = A + (1 - m) * D, the eye moves forward by what the kept distance loses.
+lis r8, mtControl@ha
+addi r8, r8, mtControl@l
+lwz r8, 28(r8)
+cmpwi r8, 2
+bne mtMiddleAdvanceRender
+lis r8, rrDioramaDistance@ha
+addi r8, r8, rrDioramaDistance@l
+lfs f1, 0(r8)
+lis r8, mtMiddle@ha
+addi r8, r8, mtMiddle@l
+lfs f2, 4(r8)
+fmuls f1, f1, f2
+fadds f6, f6, f1
+mtMiddleAdvanceRender:
 fmuls f6, f6, f5
 lfs f1, 0(r12)
 lfs f2, 0(r3)
@@ -3055,6 +3192,17 @@ fadds f5, f5, f1
 lis r8, rrDioramaDistance@ha
 addi r8, r8, rrDioramaDistance@l
 lfs f1, 0(r8)
+; Close diorama: D' = m * D, the look-at distance of the camera fields.
+lis r8, mtControl@ha
+addi r8, r8, mtControl@l
+lwz r8, 28(r8)
+cmpwi r8, 2
+bne mtMiddleDistance
+lis r8, mtMiddle@ha
+addi r8, r8, mtMiddle@l
+lfs f2, 0(r8)
+fmuls f1, f1, f2
+mtMiddleDistance:
 fmuls f5, f5, f1
 lfs f1, 0(r9)
 lfs f2, 12(r9)
@@ -3120,6 +3268,187 @@ stfs f1, 72(r9)
 lfs f1, 24(r9)
 stfs f1, 84(r9)
 mtCameraStamp:
+; Captain Toad's headlamp (hlCaptureView): publish this eye's completed view; every register but r9 / r10 and the stack is put back
+stwu r1, -0x40(r1)
+stw r0, 8(r1)
+mflr r0
+stw r0, 0x44(r1)
+.int 0x7C000026 ; mfcr r0
+stw r0, 12(r1)
+stw r3, 16(r1)
+stw r4, 20(r1)
+stw r5, 24(r1)
+stw r6, 28(r1)
+stw r7, 32(r1)
+stw r8, 36(r1)
+stw r11, 40(r1)
+stw r12, 44(r1)
+bl tcCameraCapture
+bl hlCaptureView
+lwz r3, 16(r1)
+lwz r4, 20(r1)
+lwz r5, 24(r1)
+lwz r6, 28(r1)
+lwz r7, 32(r1)
+lwz r8, 36(r1)
+lwz r11, 40(r1)
+lwz r12, 44(r1)
+lwz r0, 12(r1)
+.int 0x7C0FF120 ; mtcrf 255, r0
+lwz r0, 0x44(r1)
+mtlr r0
+lwz r0, 8(r1)
+addi r1, r1, 0x40
+; Captain Toad's lamp (mtLamp): the view direction = -(back row) of this eye camera (r9: rows right / up / back at 0 / 16 / 32)
+lis r12, mtLamp@ha
+addi r12, r12, mtLamp@l
+lfs f0, 32(r9)
+fneg f0, f0
+stfs f0, 8(r12)
+lfs f0, 36(r9)
+fneg f0, f0
+stfs f0, 12(r12)
+lfs f0, 40(r9)
+fneg f0, f0
+stfs f0, 16(r12)
+li r0, 1
+stw r0, 20(r12)
+; the touch line (mtTouch+192..): this eye's world position and the tracking-to-world turning, in every camera (the hands block runs in first person only)
+lis r7, mtTouch@ha
+addi r7, r7, mtTouch@l
+lis r12, rrSlot@ha
+lwz r11, rrSlot@l(r12)
+cmplwi r11, 1
+bgt mtTouchEyeSkip
+mulli r11, r11, 196
+lis r12, rrPoseLatch0@ha
+addi r12, r12, rrPoseLatch0@l
+add r12, r12, r11
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq mtTouchEyeSkip
+addi r12, r12, 4
+cmpwi r10, 1
+beq mtTouchEyePose
+addi r12, r12, 48
+mtTouchEyePose:
+lfs f0, 0(r9)
+lfs f1, 0(r12)
+fmuls f0, f0, f1
+lfs f1, 16(r9)
+lfs f2, 16(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 32(r9)
+lfs f2, 32(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 192(r7)
+lfs f0, 0(r9)
+lfs f1, 4(r12)
+fmuls f0, f0, f1
+lfs f1, 16(r9)
+lfs f2, 20(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 32(r9)
+lfs f2, 36(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 196(r7)
+lfs f0, 0(r9)
+lfs f1, 8(r12)
+fmuls f0, f0, f1
+lfs f1, 16(r9)
+lfs f2, 24(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 32(r9)
+lfs f2, 40(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 200(r7)
+lfs f0, 4(r9)
+lfs f1, 0(r12)
+fmuls f0, f0, f1
+lfs f1, 20(r9)
+lfs f2, 16(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 36(r9)
+lfs f2, 32(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 204(r7)
+lfs f0, 4(r9)
+lfs f1, 4(r12)
+fmuls f0, f0, f1
+lfs f1, 20(r9)
+lfs f2, 20(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 36(r9)
+lfs f2, 36(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 208(r7)
+lfs f0, 4(r9)
+lfs f1, 8(r12)
+fmuls f0, f0, f1
+lfs f1, 20(r9)
+lfs f2, 24(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 36(r9)
+lfs f2, 40(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 212(r7)
+lfs f0, 8(r9)
+lfs f1, 0(r12)
+fmuls f0, f0, f1
+lfs f1, 24(r9)
+lfs f2, 16(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 40(r9)
+lfs f2, 32(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 216(r7)
+lfs f0, 8(r9)
+lfs f1, 4(r12)
+fmuls f0, f0, f1
+lfs f1, 24(r9)
+lfs f2, 20(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 40(r9)
+lfs f2, 36(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 220(r7)
+lfs f0, 8(r9)
+lfs f1, 8(r12)
+fmuls f0, f0, f1
+lfs f1, 24(r9)
+lfs f2, 24(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 40(r9)
+lfs f2, 40(r12)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 224(r7)
+lfs f0, 52(r9)
+stfs f0, 228(r7)
+lfs f0, 56(r9)
+stfs f0, 232(r7)
+lfs f0, 60(r9)
+stfs f0, 236(r7)
+li r0, 1
+stw r0, 240(r7)
+mtTouchEyeSkip:
 lis r12, rrSlot@ha
 addi r12, r12, rrSlot@l
 lwz r11, 0(r12)
@@ -3579,6 +3908,7 @@ stw r0, 0x34(r1)
 stw r4, 8(r1)
 stw r6, 12(r1)
 bl import.vpad.VPADRead
+bl tcInputUpdate
 lwz r4, 8(r1)
 lwz r6, 12(r1)
 cmpwi r3, 0
@@ -3599,6 +3929,11 @@ addi r12, r12, mtRunB@l
 li r0, 0
 stw r0, 12(r12)
 stw r0, 16(r12)
+; touch (mtTouch): no aiming / touch unless the right grip / trigger say so on this read
+lis r12, mtTouch@ha
+addi r12, r12, mtTouch@l
+stw r0, 4(r12)
+stw r0, 272(r12)
 lwz r11, 0(r9)
 cmpwi r11, 0
 beq mtMotionDone
@@ -3615,6 +3950,7 @@ li r12, 1
 and r12, r11, r12
 cmpwi r12, 0
 beq mtMotionLeftDoneBit0
+mtMotionLeftX:
 ori r5, r5, 8192
 lis r12, 65535
 ori r12, r12, 57343
@@ -3710,6 +4046,12 @@ addi r12, r12, mtRunB@l
 li r0, 1
 stw r0, 12(r12)
 mtMotionRightDoneBit1:
+; touch (tc*): a trigger used to touch (tcButtons+8) is not the game's X until it is let go
+lis r12, tcButtons@ha
+addi r12, r12, tcButtons@l
+lwz r12, 8(r12)
+cmpwi r12, 0
+bne mtMotionRightDoneBit2
 ; the right trigger runs: held, it holds the game's X (run / pick up / fireball)
 li r12, 16
 and r12, r11, r12
@@ -3724,6 +4066,11 @@ addi r12, r12, mtRunB@l
 li r0, 1
 stw r0, 16(r12)
 mtMotionRightDoneBit2:
+; touch (tc*): while the right grip aims (tcButtons+0) it is not R
+lis r12, tcButtons@ha
+lwz r12, tcButtons@l(r12)
+cmpwi r12, 0
+bne mtMotionRightDoneBit3
 li r12, 32
 and r12, r11, r12
 cmpwi r12, 0
@@ -4350,6 +4697,14 @@ stw r7, 8(r9)
 b mrLookInputDone
 mtInputMode:
 lwz r7, 0(r8)
+cmpwi r7, 2
+bne mtInputNotMiddle
+; the close diorama in a stage: the right stick's up-down moves its distance (mtMiddleStick); elsewhere it is the diorama
+lwz r7, 28(r8)
+cmpwi r7, 2
+beq mtMiddleStick
+b mtMapYawInput
+mtInputNotMiddle:
 cmpwi r7, 1
 bne mtMapYawInput
 ; Camera distance button: each press in first person steps mtEyeBack through
@@ -4472,7 +4827,43 @@ mtHandCalAllDone:
 ; actual camera selection, which survives that boundary and rejects fallback.
 lwz r7, 28(r8)
 cmpwi r7, 1
+beq mtDistStick
+cmpwi r7, 2
 bne mrLookInputDone
+; Close diorama (mode 2): the right stick's up-down brings the camera closer to Mario (pushed forward) or farther (pulled back), as behind Mario before:
+; mtMiddle m between +8 and +12, and +4 = 1 - m.
+mtMiddleStick:
+lis r12, mtZoom@ha
+addi r12, r12, mtZoom@l
+lwz r7, 0(r12)
+cmpwi r7, 0
+beq mrLookInputDone
+lfs f1, 0x18(r4)
+.int 0xFC400A10 ; fabs f2, f1
+lfs f3, 16(r12)
+.int 0xFC021800 ; fcmpu cr0, f2, f3
+blt mrLookInputDone
+lis r11, mtMiddle@ha
+addi r11, r11, mtMiddle@l
+lfs f0, 0(r11)
+lfs f2, 16(r11)
+fmuls f1, f1, f2
+fsubs f0, f0, f1
+lfs f1, 8(r11)
+.int 0xFC000800 ; fcmpu cr0, f0, f1
+bge mtMiddleMin
+fmr f0, f1
+mtMiddleMin:
+lfs f1, 12(r11)
+.int 0xFC000800 ; fcmpu cr0, f0, f1
+ble mtMiddleMax
+fmr f0, f1
+mtMiddleMax:
+stfs f0, 0(r11)
+lfs f1, 20(r11)
+fsubs f1, f1, f0
+stfs f1, 4(r11)
+b mrLookInputDone
 mtDistStick:
 ; Camera behind Mario (mtEyeBack above 0): the right stick's up-down moves it - pulled back the
 ; camera goes farther back, pushed forward it comes closer - between mtZoom+8 and +12.
@@ -6780,6 +7171,84 @@ stfs f0, 44(r9)
 ; The whole distance goes straight back (level) instead of along the view's slope - looking up would
 ; otherwise send the camera down into the ground, looking down up into the air - and the part beyond
 ; the basic distance (mtLift+0) also lifts it, by mtLift+4 per unit. At distance 0 nothing changes.
+; Camera behind Mario on an arc (mtArc): level at the basic distance, down the arc closer, up the arc farther (see mtArc)
+lis r8, mtEyeBack@ha
+lwz r0, mtEyeBack@l(r8)
+cmpwi r0, 0
+ble mtLiftOld2
+lis r8, mtArc@ha
+addi r8, r8, mtArc@l
+lwz r0, 0(r8)
+cmpwi r0, 0
+beq mtLiftOld2
+lfs f2, 4(r8)
+.int 0xFC011000 ; fcmpu cr0, f1, f2
+bge mtArcUp2
+fsubs f4, f2, f1
+lfs f5, 8(r8)
+fsubs f5, f2, f5
+.int 0xEC842824 ; fdivs f4, f4, f5
+lfs f6, 16(r8)
+b mtArcFrac2
+mtArcUp2:
+fsubs f4, f1, f2
+lfs f5, 12(r8)
+fsubs f5, f5, f2
+.int 0xEC842824 ; fdivs f4, f4, f5
+lfs f6, 20(r8)
+mtArcFrac2:
+lfs f5, 24(r8)
+.int 0xFC042800 ; fcmpu cr0, f4, f5
+ble mtArcFracOk2
+fmr f4, f5
+mtArcFracOk2:
+fmuls f6, f6, f4
+fmuls f7, f6, f6
+fadds f8, f5, f7
+fsubs f7, f5, f7
+.int 0xECE74024 ; fdivs f7, f7, f8 (cos)
+lfs f9, 28(r8)
+fmuls f6, f6, f9
+.int 0xECC64024 ; fdivs f6, f6, f8 (sin)
+; |level back| of the view (back row x, z)
+lfs f8, 32(r9)
+fmuls f8, f8, f8
+lfs f9, 40(r9)
+fmuls f9, f9, f9
+fadds f8, f8, f9
+lfs f9, 32(r8)
+.int 0xFC084800 ; fcmpu cr0, f8, f9
+ble mtArcFlat2
+.int 0xFD204034 ; frsqrte f9, f8
+lfs f5, 36(r8)
+lfs f2, 40(r8)
+fmuls f4, f9, f9
+fmuls f4, f4, f8
+fmuls f4, f4, f5
+fsubs f4, f2, f4
+fmuls f9, f9, f4
+fmuls f4, f9, f9
+fmuls f4, f4, f8
+fmuls f4, f4, f5
+fsubs f4, f2, f4
+fmuls f9, f9, f4
+fmuls f7, f7, f9
+fmuls f7, f7, f1
+fsubs f7, f7, f1
+b mtArcK2
+mtArcFlat2:
+fsubs f7, f1, f1
+mtArcK2:
+lfs f9, 44(r9)
+fsubs f9, f9, f7
+stfs f9, 44(r9)
+fmuls f6, f6, f1
+fadds f9, f1, f7
+lfs f2, 36(r9)
+fmuls f9, f9, f2
+fsubs f8, f6, f9
+b mtLiftApply2
+mtLiftOld2:
 lis r8, mtLift@ha
 addi r8, r8, mtLift@l
 lfs f2, 0(r8)
@@ -6797,6 +7266,7 @@ fmuls f8, f8, f6
 lfs f9, 36(r9)
 fmuls f9, f9, f1
 fsubs f8, f8, f9
+mtLiftApply2:
 lfs f9, 4(r9)
 fmuls f9, f9, f8
 lfs f6, 12(r9)
@@ -6850,6 +7320,21 @@ fadds f5, f5, f1
 lis r8, rrDioramaAdvance@ha
 addi r8, r8, rrDioramaAdvance@l
 lfs f6, 0(r8)
+; Close diorama: A' = A + (1 - m) * D, the eye moves forward by what the kept distance loses.
+lis r8, mtControl@ha
+addi r8, r8, mtControl@l
+lwz r8, 28(r8)
+cmpwi r8, 2
+bne mtMiddleAdvanceCull
+lis r8, rrDioramaDistance@ha
+addi r8, r8, rrDioramaDistance@l
+lfs f1, 0(r8)
+lis r8, mtMiddle@ha
+addi r8, r8, mtMiddle@l
+lfs f2, 4(r8)
+fmuls f1, f1, f2
+fadds f6, f6, f1
+mtMiddleAdvanceCull:
 fmuls f6, f6, f5
 lfs f1, 0(r12)
 lfs f2, 0(r3)
@@ -7407,11 +7892,21 @@ rrDioramaAdvance:
 ; Cutscenes (the stage scene with a camera that is not following the player): mtCine is 1 while
 ; one is on; mtCineDist / mtCineAdv (floats, +4) replace the diorama distance factor (0.65) and
 ; advance factor (0.35) for them - keep the two adding up to 1; 0.65 / 0.35 = the normal camera.
+; Close diorama (camera mode 2): m = the share of the diorama's distance kept (0.5 at start), then 1 - m (runtime, follows m); the right stick's up-down
+; moves m (mtMiddleStick) between +8 (closest) and +12 (farthest, the diorama's own distance), +16 per pad read at full push, +20 1.0.
+mtMiddle:
+.int 0x3F000000
+.int 0x3F000000
+.int 0x3E19999A ; +8 0.15
+.int 0x3F800000 ; +12 1.0
+.int 0x3C03126F ; +16 0.008
+.int 0x3F800000 ; +20 1.0
 mtCine:
 .int 0
 mtCineDist:
 .int 0x3F4CCCCD
 .int 0x3E4CCCCD
+.int 0 ; +12 the player while the game's camera (not first person) follows it in a stage (runtime, for the touch)
 ; mode, previous switch state, generation, anchored generation, centre xyz,
 ; effective mode, slot0 mode/generation, slot1 mode/generation, -0.5, 0.1, 1,
 ; the two switch combinations the player can choose in Cemu, and last the
@@ -14264,14 +14759,35 @@ lis r12, mtTurnKeep@ha
 addi r12, r12, mtTurnKeep@l
 lwz r0, 16(r12)
 cmpwi r0, 0
-beq mtFxFollowOut
+beq mtFxNoTurn
 lwz r5, 28(r12)
 lis r6, mtHideModel@ha
 addi r6, r6, mtHideModel@l
 lwz r6, 12(r6)
 subf r5, r5, r6
 cmplwi r5, 2
-bgt mtFxFollowOut
+bgt mtFxNoTurn
+li r0, 1
+b mtFxTurnSet
+; no body turn (Captain Toad's stages hide the body): go on only for his lamp (mtLamp), the other effects stay where the game has them
+mtFxNoTurn:
+lis r6, mtLamp@ha
+lwz r0, mtLamp@l(r6)
+cmpwi r0, 0
+beq mtFxFollowOut
+lis r6, mtPipeEye@ha
+addi r6, r6, mtPipeEye@l
+lwz r0, 16(r6)
+cmpwi r0, 0
+beq mtFxFollowOut
+lis r6, mtControl@ha
+addi r6, r6, mtControl@l
+lwz r0, 28(r6)
+cmpwi r0, 1
+bne mtFxFollowOut
+li r0, 0
+mtFxTurnSet:
+stw r0, 16(r1)
 lis r6, mtFx@ha
 lwz r0, mtFx@l(r6)
 cmpwi r0, 0
@@ -14358,10 +14874,23 @@ beq mtFxFollowNext
 lwz r3, 0(r6)
 lwz r3, 4(r3)
 lwz r10, 0(r3)
+lwz r0, 16(r1)
+cmpwi r0, 0
+beq mtFxFollowNoXf
 addi r3, r10, 0x1E8
 bl mtFxXf
 addi r3, r10, 0x218
 bl mtFxXf
+mtFxFollowNoXf:
+lwz r0, 16(r1)
+lis r12, mtLamp@ha
+addi r12, r12, mtLamp@l
+stw r0, 24(r12)
+mr r3, r10
+bl mtLampAim
+lwz r0, 16(r1)
+cmpwi r0, 0
+beq mtFxFollowNext
 lis r12, mtFx@ha
 addi r12, r12, mtFx@l
 lwz r8, 12(r12)
@@ -14378,6 +14907,39 @@ mtlr r0
 addi r1, r1, 0x20
 blr
 0x02447C20 = bla mtFxFollow
+; touch (tc*)
+0x021A5368 = bla tcManager
+0x021A5550 = bla tcTouchDown
+0x021A5490 = bla tcTouchDown
+0x021A5530 = bla tcTouchDown
+0x021A6674 = bla tcOrigin
+0x021A6B84 = bla tcOrigin
+0x021A6C4C = bla tcOrigin
+0x021A66D4 = bla tcNormalize
+0x021A67F4 = bla tcCollision
+0x021A55A8 = bla tcUnproject
+0x021A5440 = bla tcNativeWidget
+0x021A68A4 = bla tcMeshHit
+0x021322D4 = bla tcGuideShow
+0x02132348 = bla tcGuideAnchor
+0x102A59B4 = .int tcGuideDraw
+0x021A5180 = ba tcManagerReset
+0x021A56E4 = bla tcHandFinish
+0x021A5734 = bla tcHandFinish
+0x102F1234 = .int tcHandControl
+0x021A5730 = bla tcHandRelease
+0x021A75AC = bla tcHandPosition
+0x102F11AC = .int tcHandCalc
+0x0249533C = mtTouchHeldQ:
+0x02476E6C = bla hlSpotDirection
+0x0251A140 = ba mtLampSetA
+0x0251A144 = mtLampSetRetA:
+0x0251A23C = ba mtLampSetB
+0x0251A240 = mtLampSetRetB:
+; (round 8: the old touch unhooked, tc* instead) 0x0236CEB4 = bla mtTouchInject
+0x0236CB78 = mtTouchSet:
+; 0x024665A4 = bla mtTouchCam / 0x024664A4 = bla mtTouchDepth (unhooked in round 8)
+0x02429674 = mtDrcCamGet:
 
 ; footprints / paw prints (only the player's code places them): their rotation (r1+0x188) and
 ; place (r1+0xBC) turned and moved like the body; the height stays the ground's
@@ -19534,6 +20096,21 @@ mtZoom:
 mtLift:
 .int 0x43480000
 .int 0x3F000000
+; mtArc: the camera behind Mario on an arc (10/10, an orbiting chase camera). 0 switch (1 = on, 0 = the old level + lift), 4 the distance it is level
+; at, 8 the closest and 12 the farthest distance (the stick's, mtZoom+8 / +12), 16 / 20 tan(half the angle) at the closest (-30 deg, below the eye) and at
+; the farthest (55 deg, above), 24 1.0, 28 2.0, 32 1e-6, 36 0.5, 40 1.5.
+mtArc:
+.int 1
+.int 0x43480000 ; +4 200.0
+.int 0x42A00000 ; +8 80.0
+.int 0x44160000 ; +12 600.0
+.int 0xBE89309C ; +16 -0.267949 = tan(-15 deg)
+.int 0x3F0543E1 ; +20 0.520567 = tan(27.5 deg)
+.int 0x3F800000 ; +24 1.0
+.int 0x40000000 ; +28 2.0
+.int 0x358637BD ; +32 1e-6
+.int 0x3F000000 ; +36 0.5
+.int 0x3FC00000 ; +40 1.5
 ; mtHandW: the last world matrix computed for each glove (left 0.., right 48..), then the two
 ; 'computed' flags at 96 and 100, at 104 the switch for the held fireball (1 = its origin
 ; follows the right glove, 0 = original), at 108 the switch for the thrown fireball's
@@ -30843,6 +31420,8 @@ stw r28, 72(r1)
 stw r29, 76(r1)
 stw r30, 80(r1)
 stw r31, 84(r1)
+; Captain Toad's lamp follows the view in first person (mtLampDraw, before anything else)
+bl mtLampDraw
 ; Captain Toad head ray: exact resource, effective FP, fresh nearby anchor.
 lis r12, mrSceneClass@ha
 lwz r12, mrSceneClass@l(r12)
@@ -31583,3 +32162,4078 @@ pfEffectFilterState:
 0x0253FAB8 = bla pfEffectSubmit
 0x0253FAF4 = bla pfEffectSubmit
 0x023E3AD4 = bla pfDraw
+
+; ---- Touch with the right controller (tc*, 10/10). Grip previews; only grip + trigger activates native touch.
+; No fake hover press.
+tcInputUpdate:
+stwu r1, -0xE0(r1)
+stw r0, 8(r1)
+mflr r0
+stw r0, 12(r1)
+.int 0x7C000026 ; mfcr r0
+stw r0, 16(r1)
+.int 0x7C0902A6 ; mfctr r0
+stw r0, 20(r1)
+stw r3, 24(r1)
+stw r4, 28(r1)
+stw r5, 32(r1)
+stw r6, 36(r1)
+stw r7, 40(r1)
+stw r8, 44(r1)
+stw r9, 48(r1)
+stw r10, 52(r1)
+stw r11, 56(r1)
+stw r12, 60(r1)
+.int 0xD8010040 ; stfd f0
+.int 0xD8210048 ; stfd f1
+.int 0xD8410050 ; stfd f2
+.int 0xD8610058 ; stfd f3
+.int 0xD8810060 ; stfd f4
+.int 0xD8A10068 ; stfd f5
+.int 0xD8C10070 ; stfd f6
+.int 0xD8E10078 ; stfd f7
+.int 0xD9010080 ; stfd f8
+.int 0xD9210088 ; stfd f9
+.int 0xD9410090 ; stfd f10
+.int 0xD9610098 ; stfd f11
+.int 0xD98100A0 ; stfd f12
+.int 0xD9A100A8 ; stfd f13
+lis r10, tcButtons@ha
+addi r10, r10, tcButtons@l
+li r0, 0
+stw r0, 0(r10)
+stw r0, 4(r10)
+lis r11, mtPad@ha
+addi r11, r11, mtPad@l
+lwz r0, 140(r11)
+andi. r0, r0, 16
+bne tcInputHeld
+li r0, 0
+stw r0, 8(r10)
+tcInputHeld:
+lis r12, tcWorld@ha
+addi r12, r12, tcWorld@l
+lwz r0, 48(r12)
+cmpwi r0, 0
+beq tcInputDone
+lis r12, mrCullEpoch@ha
+lwz r12, mrCullEpoch@l(r12)
+subf r0, r0, r12
+cmplwi r0, 2
+bgt tcInputDone
+lis r12, tcPadReady@ha
+addi r12, r12, tcPadReady@l
+lwz r0, 0(r12)
+cmpwi r0, 1
+bne tcInputDone
+lis r12, tcGen@ha
+addi r12, r12, tcGen@l
+lwz r0, 8(r12)
+cmpwi r0, 4
+bge tcInputDone
+lwz r0, 88(r11)
+cmpwi r0, 1
+bne tcInputDone
+lwz r0, 140(r11)
+andi. r0, r0, 32
+beq tcInputDone
+bl tcLease
+cmpwi r3, 0
+beq tcInputDone
+lis r10, tcButtons@ha
+addi r10, r10, tcButtons@l
+lis r11, mtPad@ha
+addi r11, r11, mtPad@l
+li r0, 1
+stw r0, 0(r10)
+lwz r0, 140(r11)
+andi. r0, r0, 16
+beq tcInputDone
+li r0, 1
+stw r0, 4(r10)
+stw r0, 8(r10)
+tcInputDone:
+.int 0xC8010040 ; lfd f0
+.int 0xC8210048 ; lfd f1
+.int 0xC8410050 ; lfd f2
+.int 0xC8610058 ; lfd f3
+.int 0xC8810060 ; lfd f4
+.int 0xC8A10068 ; lfd f5
+.int 0xC8C10070 ; lfd f6
+.int 0xC8E10078 ; lfd f7
+.int 0xC9010080 ; lfd f8
+.int 0xC9210088 ; lfd f9
+.int 0xC9410090 ; lfd f10
+.int 0xC9610098 ; lfd f11
+.int 0xC98100A0 ; lfd f12
+.int 0xC9A100A8 ; lfd f13
+lwz r3, 24(r1)
+lwz r4, 28(r1)
+lwz r5, 32(r1)
+lwz r6, 36(r1)
+lwz r7, 40(r1)
+lwz r8, 44(r1)
+lwz r9, 48(r1)
+lwz r10, 52(r1)
+lwz r11, 56(r1)
+lwz r12, 60(r1)
+lwz r0, 20(r1)
+.int 0x7C0903A6 ; mtctr r0
+lwz r0, 16(r1)
+.int 0x7C0FF120 ; mtcrf 255,r0
+lwz r0, 12(r1)
+mtlr r0
+lwz r0, 8(r1)
+addi r1, r1, 0xE0
+blr
+; no layer lease: the layer draws no ring, so input is allowed (1) and the game's own guides stay (no bit 2)
+tcLease:
+li r3, 1
+blr
+tcCameraCapture:
+stwu r1, -0xE0(r1)
+stw r0, 8(r1)
+mflr r0
+stw r0, 12(r1)
+.int 0x7C000026 ; mfcr r0
+stw r0, 16(r1)
+.int 0x7C0902A6 ; mfctr r0
+stw r0, 20(r1)
+stw r3, 24(r1)
+stw r4, 28(r1)
+stw r5, 32(r1)
+stw r6, 36(r1)
+stw r7, 40(r1)
+stw r8, 44(r1)
+stw r9, 48(r1)
+stw r10, 52(r1)
+stw r11, 56(r1)
+stw r12, 60(r1)
+.int 0xD8010040 ; stfd f0
+.int 0xD8210048 ; stfd f1
+.int 0xD8410050 ; stfd f2
+.int 0xD8610058 ; stfd f3
+.int 0xD8810060 ; stfd f4
+.int 0xD8A10068 ; stfd f5
+.int 0xD8C10070 ; stfd f6
+.int 0xD8E10078 ; stfd f7
+.int 0xD9010080 ; stfd f8
+.int 0xD9210088 ; stfd f9
+.int 0xD9410090 ; stfd f10
+.int 0xD9610098 ; stfd f11
+.int 0xD98100A0 ; stfd f12
+.int 0xD9A100A8 ; stfd f13
+lis r12, tcWorld@ha
+addi r12, r12, tcWorld@l
+li r0, 0
+stw r0, 48(r12)
+lis r11, mrSceneClass@ha
+addi r11, r11, mrSceneClass@l
+lwz r0, 0(r11)
+lis r11, 0x1032
+ori r11, r11, 0x86DC
+cmpw r0, r11
+bne tcCameraDone
+lis r11, rrSlot@ha
+addi r11, r11, rrSlot@l
+lwz r8, 0(r11)
+mulli r7, r8, 2
+add r7, r7, r10
+mulli r7, r7, 4
+lis r11, mtNearState@ha
+addi r11, r11, mtNearState@l
+add r11, r11, r7
+lwz r6, 0(r11)
+lis r11, tcConst@ha
+addi r11, r11, tcConst@l
+lfs f12, 0(r11)
+cmpwi r6, 1
+bne tcCameraScale
+lfs f12, 4(r11)
+tcCameraScale:
+stfs f12, 52(r12)
+stw r6, 56(r12)
+lis r11, mtControl@ha
+addi r11, r11, mtControl@l
+lwz r0, 8(r11)
+stw r0, 60(r12)
+lis r11, rrPoseLatch0@ha
+addi r11, r11, rrPoseLatch0@l
+mulli r8, r8, 196
+add r11, r11, r8
+lwz r0, 0(r11)
+cmpwi r0, 0
+beq tcCameraDone
+stw r0, 68(r12)
+addi r11, r11, 4
+cmpwi r10, 1
+beq tcCameraDelta
+addi r11, r11, 48
+tcCameraDelta:
+lfs f1, 0(r9)
+lfs f2, 0(r11)
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 16(r9)
+lfs f2, 16(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 32(r9)
+lfs f2, 32(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 0(r12)
+lfs f1, 0(r9)
+lfs f2, 4(r11)
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 16(r9)
+lfs f2, 20(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 32(r9)
+lfs f2, 36(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 4(r12)
+lfs f1, 0(r9)
+lfs f2, 8(r11)
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 16(r9)
+lfs f2, 24(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 32(r9)
+lfs f2, 40(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 8(r12)
+lfs f1, 0(r9)
+lfs f2, 12(r11)
+fmuls f2, f2, f12
+lfs f3, 12(r9)
+fsubs f2, f2, f3
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 16(r9)
+lfs f2, 28(r11)
+fmuls f2, f2, f12
+lfs f3, 28(r9)
+fsubs f2, f2, f3
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 32(r9)
+lfs f2, 44(r11)
+fmuls f2, f2, f12
+lfs f3, 44(r9)
+fsubs f2, f2, f3
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 12(r12)
+lfs f1, 4(r9)
+lfs f2, 0(r11)
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 20(r9)
+lfs f2, 16(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 36(r9)
+lfs f2, 32(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 16(r12)
+lfs f1, 4(r9)
+lfs f2, 4(r11)
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 20(r9)
+lfs f2, 20(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 36(r9)
+lfs f2, 36(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 20(r12)
+lfs f1, 4(r9)
+lfs f2, 8(r11)
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 20(r9)
+lfs f2, 24(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 36(r9)
+lfs f2, 40(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 24(r12)
+lfs f1, 4(r9)
+lfs f2, 12(r11)
+fmuls f2, f2, f12
+lfs f3, 12(r9)
+fsubs f2, f2, f3
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 20(r9)
+lfs f2, 28(r11)
+fmuls f2, f2, f12
+lfs f3, 28(r9)
+fsubs f2, f2, f3
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 36(r9)
+lfs f2, 44(r11)
+fmuls f2, f2, f12
+lfs f3, 44(r9)
+fsubs f2, f2, f3
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 28(r12)
+lfs f1, 8(r9)
+lfs f2, 0(r11)
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 24(r9)
+lfs f2, 16(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 40(r9)
+lfs f2, 32(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 32(r12)
+lfs f1, 8(r9)
+lfs f2, 4(r11)
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 24(r9)
+lfs f2, 20(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 40(r9)
+lfs f2, 36(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 36(r12)
+lfs f1, 8(r9)
+lfs f2, 8(r11)
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 24(r9)
+lfs f2, 24(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 40(r9)
+lfs f2, 40(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 40(r12)
+lfs f1, 8(r9)
+lfs f2, 12(r11)
+fmuls f2, f2, f12
+lfs f3, 12(r9)
+fsubs f2, f2, f3
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 24(r9)
+lfs f2, 28(r11)
+fmuls f2, f2, f12
+lfs f3, 28(r9)
+fsubs f2, f2, f3
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 40(r9)
+lfs f2, 44(r11)
+fmuls f2, f2, f12
+lfs f3, 44(r9)
+fsubs f2, f2, f3
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 44(r12)
+lis r11, mrCullEpoch@ha
+addi r11, r11, mrCullEpoch@l
+lwz r0, 0(r11)
+stw r0, 48(r12)
+bl tcPublish
+tcCameraDone:
+.int 0xC8010040 ; lfd f0
+.int 0xC8210048 ; lfd f1
+.int 0xC8410050 ; lfd f2
+.int 0xC8610058 ; lfd f3
+.int 0xC8810060 ; lfd f4
+.int 0xC8A10068 ; lfd f5
+.int 0xC8C10070 ; lfd f6
+.int 0xC8E10078 ; lfd f7
+.int 0xC9010080 ; lfd f8
+.int 0xC9210088 ; lfd f9
+.int 0xC9410090 ; lfd f10
+.int 0xC9610098 ; lfd f11
+.int 0xC98100A0 ; lfd f12
+.int 0xC9A100A8 ; lfd f13
+lwz r3, 24(r1)
+lwz r4, 28(r1)
+lwz r5, 32(r1)
+lwz r6, 36(r1)
+lwz r7, 40(r1)
+lwz r8, 44(r1)
+lwz r9, 48(r1)
+lwz r10, 52(r1)
+lwz r11, 56(r1)
+lwz r12, 60(r1)
+lwz r0, 20(r1)
+.int 0x7C0903A6 ; mtctr r0
+lwz r0, 16(r1)
+.int 0x7C0FF120 ; mtcrf 255,r0
+lwz r0, 12(r1)
+mtlr r0
+lwz r0, 8(r1)
+addi r1, r1, 0xE0
+blr
+tcManager:
+stwu r1, -0xE0(r1)
+stw r0, 8(r1)
+mflr r0
+stw r0, 12(r1)
+.int 0x7C000026 ; mfcr r0
+stw r0, 16(r1)
+.int 0x7C0902A6 ; mfctr r0
+stw r0, 20(r1)
+stw r3, 24(r1)
+stw r4, 28(r1)
+stw r5, 32(r1)
+stw r6, 36(r1)
+stw r7, 40(r1)
+stw r8, 44(r1)
+stw r9, 48(r1)
+stw r10, 52(r1)
+stw r11, 56(r1)
+stw r12, 60(r1)
+.int 0xD8010040 ; stfd f0
+.int 0xD8210048 ; stfd f1
+.int 0xD8410050 ; stfd f2
+.int 0xD8610058 ; stfd f3
+.int 0xD8810060 ; stfd f4
+.int 0xD8A10068 ; stfd f5
+.int 0xD8C10070 ; stfd f6
+.int 0xD8E10078 ; stfd f7
+.int 0xD9010080 ; stfd f8
+.int 0xD9210088 ; stfd f9
+.int 0xD9410090 ; stfd f10
+.int 0xD9610098 ; stfd f11
+.int 0xD98100A0 ; stfd f12
+.int 0xD9A100A8 ; stfd f13
+lis r12, tcHand@ha
+addi r12, r12, tcHand@l
+lwz r0, 8(r30)
+stw r0, 0(r12)
+li r0, 0
+stw r0, 4(r12)
+bl tcInputUpdate
+bl tcPrepareRay
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq tcManagerDone
+lwz r3, 8(r30)
+cmpwi r3, 0
+beq tcManagerDone
+lwz r0, 0x88(r3)
+cmpwi r0, 0
+beq tcManagerDone
+bl 0x021A6650
+tcManagerDone:
+.int 0xC8010040 ; lfd f0
+.int 0xC8210048 ; lfd f1
+.int 0xC8410050 ; lfd f2
+.int 0xC8610058 ; lfd f3
+.int 0xC8810060 ; lfd f4
+.int 0xC8A10068 ; lfd f5
+.int 0xC8C10070 ; lfd f6
+.int 0xC8E10078 ; lfd f7
+.int 0xC9010080 ; lfd f8
+.int 0xC9210088 ; lfd f9
+.int 0xC9410090 ; lfd f10
+.int 0xC9610098 ; lfd f11
+.int 0xC98100A0 ; lfd f12
+.int 0xC9A100A8 ; lfd f13
+lwz r3, 24(r1)
+lwz r4, 28(r1)
+lwz r5, 32(r1)
+lwz r6, 36(r1)
+lwz r7, 40(r1)
+lwz r8, 44(r1)
+lwz r9, 48(r1)
+lwz r10, 52(r1)
+lwz r11, 56(r1)
+lwz r12, 60(r1)
+lwz r0, 20(r1)
+.int 0x7C0903A6 ; mtctr r0
+lwz r0, 16(r1)
+.int 0x7C0FF120 ; mtcrf 255,r0
+lwz r0, 12(r1)
+mtlr r0
+lwz r0, 8(r1)
+addi r1, r1, 0xE0
+b tcTouchDown
+tcTouchDown:
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq tcTouchNative
+lis r12, tcButtons@ha
+addi r12, r12, tcButtons@l
+lwz r3, 4(r12)
+blr
+tcTouchNative:
+b 0x0249533C
+tcPrepareRay:
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+li r0, 0
+stw r0, 0(r12)
+stw r0, 4(r12)
+stw r0, 8(r12)
+lis r11, tcButtons@ha
+addi r11, r11, tcButtons@l
+lwz r0, 0(r11)
+cmpwi r0, 0
+beq tcPrepareDone
+lis r11, tcWorld@ha
+addi r11, r11, tcWorld@l
+lis r10, mrCullEpoch@ha
+addi r10, r10, mrCullEpoch@l
+lwz r10, 0(r10)
+lwz r0, 48(r11)
+cmpwi r0, 0
+beq tcPrepareDone
+subf r0, r0, r10
+cmplwi r0, 2
+bgt tcPrepareDone
+lis r8, mtControl@ha
+addi r8, r8, mtControl@l
+lwz r0, 8(r8)
+lwz r7, 60(r11)
+cmpw r0, r7
+bne tcPrepareDone
+; Separate aim history: exact pose sequence, with a second seqlock read.
+lis r8, rrSlot@ha
+lwz r0, rrSlot@l(r8)
+mulli r0, r0, 196
+lis r8, rrPoseLatch0@ha
+addi r8, r8, rrPoseLatch0@l
+add r8, r8, r0
+lwz r7, 0(r8)
+cmpwi r7, 0
+beq tcPrepareDone
+andi. r0, r7, 14
+mulli r0, r0, 28
+lis r8, tcAimHistory@ha
+addi r8, r8, tcAimHistory@l
+add r8, r8, r0
+lwz r0, 0(r8)
+cmpw r0, r7
+bne tcPrepareDone
+.int 0x7C2004AC ; lwsync
+lwz r0, 4(r8)
+cmpwi r0, 1
+bne tcPrepareDone
+lis r6, tcAimPose@ha
+addi r6, r6, tcAimPose@l
+lwz r0, 8(r8)
+stw r0, 0(r6)
+lwz r0, 12(r8)
+stw r0, 4(r6)
+lwz r0, 16(r8)
+stw r0, 8(r6)
+lwz r0, 20(r8)
+stw r0, 12(r6)
+lwz r0, 24(r8)
+stw r0, 16(r6)
+lwz r0, 28(r8)
+stw r0, 20(r6)
+lwz r0, 32(r8)
+stw r0, 24(r6)
+lwz r0, 36(r8)
+stw r0, 28(r6)
+lwz r0, 40(r8)
+stw r0, 32(r6)
+lwz r0, 44(r8)
+stw r0, 36(r6)
+lwz r0, 48(r8)
+stw r0, 40(r6)
+lwz r0, 52(r8)
+stw r0, 44(r6)
+.int 0x7C2004AC ; lwsync
+lwz r0, 0(r8)
+cmpw r0, r7
+bne tcPrepareDone
+mr r8, r6
+lfs f12, 52(r11)
+stfs f12, 64(r12)
+stw r10, 12(r12)
+lfs f1, 0(r11)
+lfs f2, 12(r8)
+fmuls f2, f2, f12
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 4(r11)
+lfs f2, 28(r8)
+fmuls f2, f2, f12
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 8(r11)
+lfs f2, 44(r8)
+fmuls f2, f2, f12
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 12(r11)
+fadds f0, f0, f1
+stfs f0, 16(r12)
+lfs f1, 0(r11)
+lfs f2, 8(r8)
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 4(r11)
+lfs f2, 24(r8)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 8(r11)
+lfs f2, 40(r8)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+fneg f0, f0
+stfs f0, 28(r12)
+lfs f1, 16(r11)
+lfs f2, 12(r8)
+fmuls f2, f2, f12
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 20(r11)
+lfs f2, 28(r8)
+fmuls f2, f2, f12
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 24(r11)
+lfs f2, 44(r8)
+fmuls f2, f2, f12
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 28(r11)
+fadds f0, f0, f1
+stfs f0, 20(r12)
+lfs f1, 16(r11)
+lfs f2, 8(r8)
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 20(r11)
+lfs f2, 24(r8)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 24(r11)
+lfs f2, 40(r8)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+fneg f0, f0
+stfs f0, 32(r12)
+lfs f1, 32(r11)
+lfs f2, 12(r8)
+fmuls f2, f2, f12
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 36(r11)
+lfs f2, 28(r8)
+fmuls f2, f2, f12
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 40(r11)
+lfs f2, 44(r8)
+fmuls f2, f2, f12
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 44(r11)
+fadds f0, f0, f1
+stfs f0, 24(r12)
+lfs f1, 32(r11)
+lfs f2, 8(r8)
+fmuls f1, f1, f2
+fmr f0, f1
+lfs f1, 36(r11)
+lfs f2, 24(r8)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 40(r11)
+lfs f2, 40(r8)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+fneg f0, f0
+stfs f0, 36(r12)
+lis r11, tcConst@ha
+addi r11, r11, tcConst@l
+lfs f5, 8(r11)
+fmuls f5, f5, f12
+lfs f6, 12(r11)
+lfs f0, 28(r12)
+fmuls f1, f0, f6
+stfs f1, 40(r12)
+fmuls f0, f0, f5
+lfs f1, 16(r12)
+fadds f0, f0, f1
+stfs f0, 52(r12)
+lfs f0, 32(r12)
+fmuls f1, f0, f6
+stfs f1, 44(r12)
+fmuls f0, f0, f5
+lfs f1, 20(r12)
+fadds f0, f0, f1
+stfs f0, 56(r12)
+lfs f0, 36(r12)
+fmuls f1, f0, f6
+stfs f1, 48(r12)
+fmuls f0, f0, f5
+lfs f1, 24(r12)
+fadds f0, f0, f1
+stfs f0, 60(r12)
+li r0, 1
+stw r0, 0(r12)
+tcPrepareDone:
+blr
+tcOrigin:
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq tcOriginNative
+addi r3, r12, 16
+blr
+tcOriginNative:
+b 0x02429774
+tcNormalize:
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq tcNormalizeNative
+lwz r0, 28(r12)
+stw r0, 0(r3)
+lwz r0, 32(r12)
+stw r0, 4(r3)
+lwz r0, 36(r12)
+stw r0, 8(r3)
+blr
+tcNormalizeNative:
+b 0x023EBB30
+tcCollision:
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq tcCollisionNative
+addi r4, r12, 16
+addi r5, r12, 40
+tcCollisionNative:
+b 0x02437E98
+tcUnproject:
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq tcUnprojectNative
+lwz r0, 52(r12)
+stw r0, 0(r3)
+lwz r0, 56(r12)
+stw r0, 4(r3)
+lwz r0, 60(r12)
+stw r0, 8(r3)
+blr
+tcUnprojectNative:
+b 0x024665E4
+tcNativeWidget:
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq tcWidgetNative
+b 0x0245F21C
+tcWidgetNative:
+b 0x0245F26C
+tcMeshHit:
+stwu r1, -0xE0(r1)
+stw r0, 8(r1)
+mflr r0
+stw r0, 12(r1)
+.int 0x7C000026 ; mfcr r0
+stw r0, 16(r1)
+.int 0x7C0902A6 ; mfctr r0
+stw r0, 20(r1)
+stw r3, 24(r1)
+stw r4, 28(r1)
+stw r5, 32(r1)
+stw r6, 36(r1)
+stw r7, 40(r1)
+stw r8, 44(r1)
+stw r9, 48(r1)
+stw r10, 52(r1)
+stw r11, 56(r1)
+stw r12, 60(r1)
+.int 0xD8010040 ; stfd f0
+.int 0xD8210048 ; stfd f1
+.int 0xD8410050 ; stfd f2
+.int 0xD8610058 ; stfd f3
+.int 0xD8810060 ; stfd f4
+.int 0xD8A10068 ; stfd f5
+.int 0xD8C10070 ; stfd f6
+.int 0xD8E10078 ; stfd f7
+.int 0xD9010080 ; stfd f8
+.int 0xD9210088 ; stfd f9
+.int 0xD9410090 ; stfd f10
+.int 0xD9610098 ; stfd f11
+.int 0xD98100A0 ; stfd f12
+.int 0xD9A100A8 ; stfd f13
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq tcMeshDone
+li r0, 1
+stw r0, 4(r12)
+li r0, 0
+stw r0, 8(r12)
+lwz r0, 100(r28)
+stw r0, 52(r12)
+lwz r0, 104(r28)
+stw r0, 56(r12)
+lwz r0, 108(r28)
+stw r0, 60(r12)
+lwz r11, 0(r28)
+cmpwi r11, 0
+beq tcMeshDone
+lwz r11, 0x120(r11)
+cmpwi r11, 0
+beq tcMeshDone
+lwz r11, 0x2C(r11)
+cmpwi r11, 0
+beq tcMeshDone
+lwz r0, 0(r11)
+lis r11, 0x102E
+ori r11, r11, 0x17D8
+cmpw r0, r11
+bne tcMeshDone
+li r0, 1
+stw r0, 8(r12)
+tcMeshDone:
+.int 0xC8010040 ; lfd f0
+.int 0xC8210048 ; lfd f1
+.int 0xC8410050 ; lfd f2
+.int 0xC8610058 ; lfd f3
+.int 0xC8810060 ; lfd f4
+.int 0xC8A10068 ; lfd f5
+.int 0xC8C10070 ; lfd f6
+.int 0xC8E10078 ; lfd f7
+.int 0xC9010080 ; lfd f8
+.int 0xC9210088 ; lfd f9
+.int 0xC9410090 ; lfd f10
+.int 0xC9610098 ; lfd f11
+.int 0xC98100A0 ; lfd f12
+.int 0xC9A100A8 ; lfd f13
+lwz r3, 24(r1)
+lwz r4, 28(r1)
+lwz r5, 32(r1)
+lwz r6, 36(r1)
+lwz r7, 40(r1)
+lwz r8, 44(r1)
+lwz r9, 48(r1)
+lwz r10, 52(r1)
+lwz r11, 56(r1)
+lwz r12, 60(r1)
+lwz r0, 20(r1)
+.int 0x7C0903A6 ; mtctr r0
+lwz r0, 16(r1)
+.int 0x7C0FF120 ; mtcrf 255,r0
+lwz r0, 12(r1)
+mtlr r0
+lwz r0, 8(r1)
+addi r1, r1, 0xE0
+mr r26, r28
+blr
+tcGuideShow:
+stwu r1, -0xE0(r1)
+stw r0, 8(r1)
+mflr r0
+stw r0, 12(r1)
+.int 0x7C000026 ; mfcr r0
+stw r0, 16(r1)
+.int 0x7C0902A6 ; mfctr r0
+stw r0, 20(r1)
+stw r3, 24(r1)
+stw r4, 28(r1)
+stw r5, 32(r1)
+stw r6, 36(r1)
+stw r7, 40(r1)
+stw r8, 44(r1)
+stw r9, 48(r1)
+stw r10, 52(r1)
+stw r11, 56(r1)
+stw r12, 60(r1)
+.int 0xD8010040 ; stfd f0
+.int 0xD8210048 ; stfd f1
+.int 0xD8410050 ; stfd f2
+.int 0xD8610058 ; stfd f3
+.int 0xD8810060 ; stfd f4
+.int 0xD8A10068 ; stfd f5
+.int 0xD8C10070 ; stfd f6
+.int 0xD8E10078 ; stfd f7
+.int 0xD9010080 ; stfd f8
+.int 0xD9210088 ; stfd f9
+.int 0xD9410090 ; stfd f10
+.int 0xD9610098 ; stfd f11
+.int 0xD98100A0 ; stfd f12
+.int 0xD9A100A8 ; stfd f13
+mr r3, r31
+bl tcGuideFind
+cmpwi r3, 0
+bne tcGuideShowFound
+lis r3, tcGuides@ha
+addi r3, r3, tcGuides@l
+li r4, 8
+lis r11, mrCullEpoch@ha
+addi r11, r11, mrCullEpoch@l
+lwz r11, 0(r11)
+tcGuideFree:
+lwz r0, 4(r3)
+subf r0, r0, r11
+cmplwi r0, 2
+bgt tcGuideShowFound
+lwz r0, 0(r3)
+cmpwi r0, 0
+beq tcGuideShowFound
+addi r3, r3, 24
+addi r4, r4, -1
+cmpwi r4, 0
+bne tcGuideFree
+b tcGuideShowDone
+tcGuideShowFound:
+stw r31, 0(r3)
+li r0, 0
+stw r0, 4(r3)
+tcGuideShowDone:
+.int 0xC8010040 ; lfd f0
+.int 0xC8210048 ; lfd f1
+.int 0xC8410050 ; lfd f2
+.int 0xC8610058 ; lfd f3
+.int 0xC8810060 ; lfd f4
+.int 0xC8A10068 ; lfd f5
+.int 0xC8C10070 ; lfd f6
+.int 0xC8E10078 ; lfd f7
+.int 0xC9010080 ; lfd f8
+.int 0xC9210088 ; lfd f9
+.int 0xC9410090 ; lfd f10
+.int 0xC9610098 ; lfd f11
+.int 0xC98100A0 ; lfd f12
+.int 0xC9A100A8 ; lfd f13
+lwz r3, 24(r1)
+lwz r4, 28(r1)
+lwz r5, 32(r1)
+lwz r6, 36(r1)
+lwz r7, 40(r1)
+lwz r8, 44(r1)
+lwz r9, 48(r1)
+lwz r10, 52(r1)
+lwz r11, 56(r1)
+lwz r12, 60(r1)
+lwz r0, 20(r1)
+.int 0x7C0903A6 ; mtctr r0
+lwz r0, 16(r1)
+.int 0x7C0FF120 ; mtcrf 255,r0
+lwz r0, 12(r1)
+mtlr r0
+lwz r0, 8(r1)
+addi r1, r1, 0xE0
+b 0x0245DF48
+tcGuideFind:
+lis r12, tcGuides@ha
+addi r12, r12, tcGuides@l
+li r11, 8
+tcGuideFindLoop:
+lwz r0, 0(r12)
+cmpw r0, r3
+beq tcGuideFound
+addi r12, r12, 24
+addi r11, r11, -1
+cmpwi r11, 0
+bne tcGuideFindLoop
+li r3, 0
+blr
+tcGuideFound:
+mr r3, r12
+blr
+tcGuideAnchor:
+stwu r1, -0xE0(r1)
+stw r0, 8(r1)
+mflr r0
+stw r0, 12(r1)
+.int 0x7C000026 ; mfcr r0
+stw r0, 16(r1)
+.int 0x7C0902A6 ; mfctr r0
+stw r0, 20(r1)
+stw r3, 24(r1)
+stw r4, 28(r1)
+stw r5, 32(r1)
+stw r6, 36(r1)
+stw r7, 40(r1)
+stw r8, 44(r1)
+stw r9, 48(r1)
+stw r10, 52(r1)
+stw r11, 56(r1)
+stw r12, 60(r1)
+.int 0xD8010040 ; stfd f0
+.int 0xD8210048 ; stfd f1
+.int 0xD8410050 ; stfd f2
+.int 0xD8610058 ; stfd f3
+.int 0xD8810060 ; stfd f4
+.int 0xD8A10068 ; stfd f5
+.int 0xD8C10070 ; stfd f6
+.int 0xD8E10078 ; stfd f7
+.int 0xD9010080 ; stfd f8
+.int 0xD9210088 ; stfd f9
+.int 0xD9410090 ; stfd f10
+.int 0xD9610098 ; stfd f11
+.int 0xD98100A0 ; stfd f12
+.int 0xD9A100A8 ; stfd f13
+lbz r0, 0x4C(r3)
+cmpwi r0, 0
+beq tcGuideAnchorDone
+lbz r0, 0x4D(r3)
+cmpwi r0, 0
+beq tcGuideAnchorDone
+bl tcGuideFind
+cmpwi r3, 0
+beq tcGuideAnchorDone
+lis r11, mrCullEpoch@ha
+addi r11, r11, mrCullEpoch@l
+lwz r0, 0(r11)
+stw r0, 4(r3)
+lwz r5, 32(r1)
+lwz r0, 0(r5)
+stw r0, 8(r3)
+lwz r0, 4(r5)
+stw r0, 12(r3)
+lwz r0, 8(r5)
+stw r0, 16(r3)
+tcGuideAnchorDone:
+.int 0xC8010040 ; lfd f0
+.int 0xC8210048 ; lfd f1
+.int 0xC8410050 ; lfd f2
+.int 0xC8610058 ; lfd f3
+.int 0xC8810060 ; lfd f4
+.int 0xC8A10068 ; lfd f5
+.int 0xC8C10070 ; lfd f6
+.int 0xC8E10078 ; lfd f7
+.int 0xC9010080 ; lfd f8
+.int 0xC9210088 ; lfd f9
+.int 0xC9410090 ; lfd f10
+.int 0xC9610098 ; lfd f11
+.int 0xC98100A0 ; lfd f12
+.int 0xC9A100A8 ; lfd f13
+lwz r3, 24(r1)
+lwz r4, 28(r1)
+lwz r5, 32(r1)
+lwz r6, 36(r1)
+lwz r7, 40(r1)
+lwz r8, 44(r1)
+lwz r9, 48(r1)
+lwz r10, 52(r1)
+lwz r11, 56(r1)
+lwz r12, 60(r1)
+lwz r0, 20(r1)
+.int 0x7C0903A6 ; mtctr r0
+lwz r0, 16(r1)
+.int 0x7C0FF120 ; mtcrf 255,r0
+lwz r0, 12(r1)
+mtlr r0
+lwz r0, 8(r1)
+addi r1, r1, 0xE0
+b 0x022FBFF8
+tcGuideDraw:
+stwu r1, -0xE0(r1)
+stw r0, 8(r1)
+mflr r0
+stw r0, 12(r1)
+.int 0x7C000026 ; mfcr r0
+stw r0, 16(r1)
+.int 0x7C0902A6 ; mfctr r0
+stw r0, 20(r1)
+stw r3, 24(r1)
+stw r4, 28(r1)
+stw r5, 32(r1)
+stw r6, 36(r1)
+stw r7, 40(r1)
+stw r8, 44(r1)
+stw r9, 48(r1)
+stw r10, 52(r1)
+stw r11, 56(r1)
+stw r12, 60(r1)
+.int 0xD8010040 ; stfd f0
+.int 0xD8210048 ; stfd f1
+.int 0xD8410050 ; stfd f2
+.int 0xD8610058 ; stfd f3
+.int 0xD8810060 ; stfd f4
+.int 0xD8A10068 ; stfd f5
+.int 0xD8C10070 ; stfd f6
+.int 0xD8E10078 ; stfd f7
+.int 0xD9010080 ; stfd f8
+.int 0xD9210088 ; stfd f9
+.int 0xD9410090 ; stfd f10
+.int 0xD9610098 ; stfd f11
+.int 0xD98100A0 ; stfd f12
+.int 0xD9A100A8 ; stfd f13
+bl tcLease
+andi. r0, r3, 2
+beq tcGuideDrawNative
+lwz r3, 24(r1)
+bl tcGuideFind
+cmpwi r3, 0
+beq tcGuideDrawNative
+lwz r0, 4(r3)
+lis r11, mrCullEpoch@ha
+addi r11, r11, mrCullEpoch@l
+lwz r11, 0(r11)
+subf r0, r0, r11
+cmplwi r0, 1
+bgt tcGuideDrawNative
+.int 0xC8010040 ; lfd f0
+.int 0xC8210048 ; lfd f1
+.int 0xC8410050 ; lfd f2
+.int 0xC8610058 ; lfd f3
+.int 0xC8810060 ; lfd f4
+.int 0xC8A10068 ; lfd f5
+.int 0xC8C10070 ; lfd f6
+.int 0xC8E10078 ; lfd f7
+.int 0xC9010080 ; lfd f8
+.int 0xC9210088 ; lfd f9
+.int 0xC9410090 ; lfd f10
+.int 0xC9610098 ; lfd f11
+.int 0xC98100A0 ; lfd f12
+.int 0xC9A100A8 ; lfd f13
+lwz r3, 24(r1)
+lwz r4, 28(r1)
+lwz r5, 32(r1)
+lwz r6, 36(r1)
+lwz r7, 40(r1)
+lwz r8, 44(r1)
+lwz r9, 48(r1)
+lwz r10, 52(r1)
+lwz r11, 56(r1)
+lwz r12, 60(r1)
+lwz r0, 20(r1)
+.int 0x7C0903A6 ; mtctr r0
+lwz r0, 16(r1)
+.int 0x7C0FF120 ; mtcrf 255,r0
+lwz r0, 12(r1)
+mtlr r0
+lwz r0, 8(r1)
+addi r1, r1, 0xE0
+blr
+tcGuideDrawNative:
+.int 0xC8010040 ; lfd f0
+.int 0xC8210048 ; lfd f1
+.int 0xC8410050 ; lfd f2
+.int 0xC8610058 ; lfd f3
+.int 0xC8810060 ; lfd f4
+.int 0xC8A10068 ; lfd f5
+.int 0xC8C10070 ; lfd f6
+.int 0xC8E10078 ; lfd f7
+.int 0xC9010080 ; lfd f8
+.int 0xC9210088 ; lfd f9
+.int 0xC9410090 ; lfd f10
+.int 0xC9610098 ; lfd f11
+.int 0xC98100A0 ; lfd f12
+.int 0xC9A100A8 ; lfd f13
+lwz r3, 24(r1)
+lwz r4, 28(r1)
+lwz r5, 32(r1)
+lwz r6, 36(r1)
+lwz r7, 40(r1)
+lwz r8, 44(r1)
+lwz r9, 48(r1)
+lwz r10, 52(r1)
+lwz r11, 56(r1)
+lwz r12, 60(r1)
+lwz r0, 20(r1)
+.int 0x7C0903A6 ; mtctr r0
+lwz r0, 16(r1)
+.int 0x7C0FF120 ; mtcrf 255,r0
+lwz r0, 12(r1)
+mtlr r0
+lwz r0, 8(r1)
+addi r1, r1, 0xE0
+b 0x0245EA14
+tcPublish:
+lis r12, tcPacket@ha
+addi r12, r12, tcPacket@l
+lis r11, rrSlot@ha
+addi r11, r11, rrSlot@l
+lwz r8, 0(r11)
+mulli r8, r8, 2
+add r8, r8, r10
+mulli r8, r8, 160
+addi r12, r12, 16
+add r12, r12, r8
+li r0, 0
+stw r0, 0(r12)
+lis r11, tcWorld@ha
+addi r11, r11, tcWorld@l
+lwz r0, 56(r11)
+li r8, 0
+cmpwi r0, 1
+bne tcPublishMode
+li r8, 1
+tcPublishMode:
+stw r8, 4(r12)
+lwz r0, 48(r11)
+stw r0, 8(r12)
+li r0, 0
+stw r0, 16(r12)
+stw r0, 32(r12)
+stw r0, 48(r12)
+stw r0, 64(r12)
+stw r0, 80(r12)
+stw r0, 96(r12)
+stw r0, 112(r12)
+stw r0, 128(r12)
+stw r0, 144(r12)
+lis r11, tcRay@ha
+addi r11, r11, tcRay@l
+lwz r0, 0(r11)
+cmpwi r0, 0
+beq tcPublishGuides
+lwz r0, 12(r11)
+lwz r8, 8(r12)
+cmpw r0, r8
+bne tcPublishGuides
+li r0, 1
+lis r8, tcHand@ha
+addi r8, r8, tcHand@l
+lwz r0, 4(r8)
+cmpwi r0, 1
+li r0, 1
+bne tcPublishCursorKind
+lwz r8, 8(r8)
+lwz r0, 8(r12)
+cmpw r8, r0
+li r0, 1
+bne tcPublishCursorKind
+li r0, 2
+tcPublishCursorKind:
+stw r0, 16(r12)
+lfs f0, 12(r9)
+lfs f1, 0(r9)
+lfs f2, 52(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 4(r9)
+lfs f2, 56(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 8(r9)
+lfs f2, 60(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 20(r12)
+lfs f0, 28(r9)
+lfs f1, 16(r9)
+lfs f2, 52(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 20(r9)
+lfs f2, 56(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 24(r9)
+lfs f2, 60(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 24(r12)
+lfs f0, 44(r9)
+lfs f1, 32(r9)
+lfs f2, 52(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 36(r9)
+lfs f2, 56(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+lfs f1, 40(r9)
+lfs f2, 60(r11)
+fmuls f1, f1, f2
+fadds f0, f0, f1
+stfs f0, 28(r12)
+tcPublishGuides:
+lis r11, tcWorld@ha
+addi r11, r11, tcWorld@l
+lwz r0, 68(r11)
+.int 0x7C2004AC ; lwsync
+stw r0, 0(r12)
+blr
+tcWorld:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+tcRay:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+tcGuides:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+tcConst:
+.float 1.0
+.float 0.1
+.float 1500.0
+.float 100000.0
+tcPacket:
+.int 0x4D544D4B
+.int 2
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+tcAimHistory:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+tcAimPose:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+; Reset on native manager construction, not by remembered pointer equality.
+tcManagerReset:
+stwu r1, -0xE0(r1)
+stw r0, 8(r1)
+mflr r0
+stw r0, 12(r1)
+.int 0x7C000026 ; mfcr r0
+stw r0, 16(r1)
+.int 0x7C0902A6 ; mfctr r0
+stw r0, 20(r1)
+stw r3, 24(r1)
+stw r4, 28(r1)
+stw r5, 32(r1)
+stw r6, 36(r1)
+stw r7, 40(r1)
+stw r8, 44(r1)
+stw r9, 48(r1)
+stw r10, 52(r1)
+stw r11, 56(r1)
+stw r12, 60(r1)
+.int 0xD8010040 ; stfd f0
+.int 0xD8210048 ; stfd f1
+.int 0xD8410050 ; stfd f2
+.int 0xD8610058 ; stfd f3
+.int 0xD8810060 ; stfd f4
+.int 0xD8A10068 ; stfd f5
+.int 0xD8C10070 ; stfd f6
+.int 0xD8E10078 ; stfd f7
+.int 0xD9010080 ; stfd f8
+.int 0xD9210088 ; stfd f9
+.int 0xD9410090 ; stfd f10
+.int 0xD9610098 ; stfd f11
+.int 0xD98100A0 ; stfd f12
+.int 0xD9A100A8 ; stfd f13
+lis r12, tcHand@ha
+addi r12, r12, tcHand@l
+li r0, 0
+stw r0, 0(r12)
+stw r0, 4(r12)
+stw r0, 8(r12)
+stw r0, 12(r12)
+lis r12, tcWorld@ha
+addi r12, r12, tcWorld@l
+li r0, 0
+stw r0, 48(r12)
+lis r12, tcRay@ha
+stw r0, tcRay@l(r12)
+lis r12, tcButtons@ha
+addi r12, r12, tcButtons@l
+stw r0, 0(r12)
+stw r0, 4(r12)
+stw r0, 8(r12)
+lis r12, tcGuides@ha
+addi r12, r12, tcGuides@l
+li r11, 8
+tcManagerClearGuides:
+stw r0, 0(r12)
+stw r0, 4(r12)
+addi r12, r12, 24
+addi r11, r11, -1
+cmpwi r11, 0
+bne tcManagerClearGuides
+.int 0xC8010040 ; lfd f0
+.int 0xC8210048 ; lfd f1
+.int 0xC8410050 ; lfd f2
+.int 0xC8610058 ; lfd f3
+.int 0xC8810060 ; lfd f4
+.int 0xC8A10068 ; lfd f5
+.int 0xC8C10070 ; lfd f6
+.int 0xC8E10078 ; lfd f7
+.int 0xC9010080 ; lfd f8
+.int 0xC9210088 ; lfd f9
+.int 0xC9410090 ; lfd f10
+.int 0xC9610098 ; lfd f11
+.int 0xC98100A0 ; lfd f12
+.int 0xC9A100A8 ; lfd f13
+lwz r3, 24(r1)
+lwz r4, 28(r1)
+lwz r5, 32(r1)
+lwz r6, 36(r1)
+lwz r7, 40(r1)
+lwz r8, 44(r1)
+lwz r9, 48(r1)
+lwz r10, 52(r1)
+lwz r11, 56(r1)
+lwz r12, 60(r1)
+lwz r0, 20(r1)
+.int 0x7C0903A6 ; mtctr r0
+lwz r0, 16(r1)
+.int 0x7C0FF120 ; mtcrf 255,r0
+lwz r0, 12(r1)
+mtlr r0
+lwz r0, 8(r1)
+addi r1, r1, 0xE0
+mflr r0
+b 0x021A5184
+
+
+; Native TouchPoint preview. No touch byte or sensor message is synthesized.
+; Both manager return paths run this after its input/release handling.
+tcHandFinish:
+stwu r1, -0xE0(r1)
+stw r0, 8(r1)
+mflr r0
+stw r0, 12(r1)
+.int 0x7C000026 ; mfcr r0
+stw r0, 16(r1)
+.int 0x7C0902A6 ; mfctr r0
+stw r0, 20(r1)
+stw r3, 24(r1)
+stw r4, 28(r1)
+stw r5, 32(r1)
+stw r6, 36(r1)
+stw r7, 40(r1)
+stw r8, 44(r1)
+stw r9, 48(r1)
+stw r10, 52(r1)
+stw r11, 56(r1)
+stw r12, 60(r1)
+.int 0xD8010040 ; stfd f0
+.int 0xD8210048 ; stfd f1
+.int 0xD8410050 ; stfd f2
+.int 0xD8610058 ; stfd f3
+.int 0xD8810060 ; stfd f4
+.int 0xD8A10068 ; stfd f5
+.int 0xD8C10070 ; stfd f6
+.int 0xD8E10078 ; stfd f7
+.int 0xD9010080 ; stfd f8
+.int 0xD9210088 ; stfd f9
+.int 0xD9410090 ; stfd f10
+.int 0xD9610098 ; stfd f11
+.int 0xD98100A0 ; stfd f12
+.int 0xD9A100A8 ; stfd f13
+lwz r3, 8(r30)
+bl tcHandPreview
+.int 0xC8010040 ; lfd f0
+.int 0xC8210048 ; lfd f1
+.int 0xC8410050 ; lfd f2
+.int 0xC8610058 ; lfd f3
+.int 0xC8810060 ; lfd f4
+.int 0xC8A10068 ; lfd f5
+.int 0xC8C10070 ; lfd f6
+.int 0xC8E10078 ; lfd f7
+.int 0xC9010080 ; lfd f8
+.int 0xC9210088 ; lfd f9
+.int 0xC9410090 ; lfd f10
+.int 0xC9610098 ; lfd f11
+.int 0xC98100A0 ; lfd f12
+.int 0xC9A100A8 ; lfd f13
+lwz r3, 24(r1)
+lwz r4, 28(r1)
+lwz r5, 32(r1)
+lwz r6, 36(r1)
+lwz r7, 40(r1)
+lwz r8, 44(r1)
+lwz r9, 48(r1)
+lwz r10, 52(r1)
+lwz r11, 56(r1)
+lwz r12, 60(r1)
+lwz r0, 20(r1)
+.int 0x7C0903A6 ; mtctr r0
+lwz r0, 16(r1)
+.int 0x7C0FF120 ; mtcrf 255,r0
+lwz r0, 12(r1)
+mtlr r0
+lwz r0, 8(r1)
+addi r1, r1, 0xE0
+lwz r29, 0x34(r1)
+blr
+
+tcHandPreview:
+stwu r1, -0x20(r1)
+mflr r0
+stw r0, 0x24(r1)
+stw r31, 0x1C(r1)
+mr r31, r3
+cmpwi r31, 0
+beq tcHandPreviewDone
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq tcHandPreviewOff
+; the hand wherever the ray goes, not only over a touch platform
+; PointWait is presentation only. Native control remains gated by trigger.
+lis r12, tcButtons@ha
+addi r12, r12, tcButtons@l
+lwz r0, 4(r12)
+cmpwi r0, 0
+bne tcHandPreviewPlace
+bl 0x023FC848
+cmpwi r3, 0
+beq tcHandPreviewState
+mr r3, r31
+bl 0x02414194
+tcHandPreviewState:
+mr r3, r31
+lis r4, 0x104E
+addi r4, r4, 0x392C
+bl 0x02441238
+cmpwi r3, 0
+bne tcHandPreviewAnimate
+mr r3, r31
+lis r4, 0x104E
+addi r4, r4, 0x392C
+bl 0x02441158
+tcHandPreviewAnimate:
+; Start the native pointing animation on entering hover, not every frame.
+lis r12, tcHand@ha
+addi r12, r12, tcHand@l
+lwz r0, 12(r12)
+cmpwi r0, 0
+bne tcHandPreviewPlace
+mr r3, r31
+lis r4, 0x102F
+addi r4, r4, 0x104C
+bl 0x023F8F50
+tcHandPreviewPlace:
+mr r3, r31
+lis r4, tcRay@ha
+addi r4, r4, tcRay@l
+addi r4, r4, 52
+addi r5, r31, 0xA8
+bl 0x021A7574
+mr r3, r31
+bl 0x0240164C
+lis r12, tcHand@ha
+addi r12, r12, tcHand@l
+li r0, 1
+stw r0, 4(r12)
+stw r0, 12(r12)
+lis r11, mrCullEpoch@ha
+lwz r0, mrCullEpoch@l(r11)
+stw r0, 8(r12)
+b tcHandPreviewDone
+tcHandPreviewOff:
+lis r12, tcHand@ha
+addi r12, r12, tcHand@l
+lwz r0, 12(r12)
+li r11, 0
+stw r11, 12(r12)
+stw r11, 4(r12)
+cmpwi r0, 0
+beq tcHandPreviewDone
+; A preview we made alive must not keep dispatching native touch messages.
+lis r12, tcButtons@ha
+addi r12, r12, tcButtons@l
+lwz r0, 4(r12)
+cmpwi r0, 0
+bne tcHandPreviewDone
+mr r3, r31
+bl 0x0241433C
+tcHandPreviewDone:
+lwz r0, 0x24(r1)
+lwz r31, 0x1C(r1)
+mtlr r0
+addi r1, r1, 0x20
+blr
+
+; A hover may animate the existing model but must never run its action dispatch.
+; Keep the game's controller/mouse path when VR is not taking touch ownership.
+tcHandControl:
+lis r12, tcRay@ha
+lwz r0, tcRay@l(r12)
+cmpwi r0, 0
+beq tcHandControlNative
+lis r12, tcButtons@ha
+addi r12, r12, tcButtons@l
+lwz r0, 4(r12)
+cmpwi r0, 0
+beq tcHandControlHover
+tcHandControlNative:
+stwu r1, -0x20(r1)
+mflr r0
+stw r0, 0x24(r1)
+stw r31, 0x1C(r1)
+mr r31, r3
+bl 0x021A69D4
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq tcHandControlDone
+; the hand stays shown after a native touch away from a platform too
+tcHandControlDone:
+lwz r0, 0x24(r1)
+lwz r31, 0x1C(r1)
+mtlr r0
+addi r1, r1, 0x20
+blr
+tcHandControlHover:
+blr
+
+; Do not begin the native release animation while still hovering a platform.
+tcHandRelease:
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq tcHandReleaseNative
+; no release while the ray is live, platform or not
+b tcHandReleaseDone
+tcHandReleaseNative:
+b 0x021A7890
+tcHandReleaseDone:
+blr
+
+; The native hand and its animation use the exact controller collision point.
+; No screen-coordinate reprojection or separate target offset is applied.
+tcHandPosition:
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq tcHandPositionNative
+lis r11, tcHand@ha
+lwz r0, tcHand@l(r11)
+cmpw r0, r3
+bne tcHandPositionNative
+addi r4, r12, 52
+tcHandPositionNative:
+b 0x02406778
+
+
+; The pointing finger is offset from the native actor origin. Align its live
+; animated distal joint using a model-only render matrix. Neither the actor
+; pose nor its collision/sensor matrices are changed by the visual alignment.
+tcHandCalc:
+stwu r1, -0xA0(r1)
+mflr r0
+stw r0, 0xA4(r1)
+stw r31, 0x9C(r1)
+stw r30, 0x98(r1)
+mr r31, r3
+bl 0x024146A0
+lis r12, tcHand@ha
+addi r12, r12, tcHand@l
+lwz r0, 0(r12)
+cmpw r0, r31
+bne tcHandCalcDone
+lwz r0, 4(r12)
+cmpwi r0, 1
+bne tcHandCalcDone
+lis r11, mrCullEpoch@ha
+lwz r11, mrCullEpoch@l(r11)
+lwz r0, 8(r12)
+cmpw r0, r11
+bne tcHandCalcDone
+lwz r0, 0x44(r31)
+cmpwi r0, 0
+beq tcHandCalcDone
+; Native lookup validates the joint before the matrix accessor is called.
+mr r3, r31
+lis r4, tcFingerJoint@ha
+addi r4, r4, tcFingerJoint@l
+bl 0x02402550
+cmpwi r3, 0
+beq tcHandCalcDone
+mr r3, r31
+lis r4, tcFingerJoint@ha
+addi r4, r4, tcFingerJoint@l
+bl 0x0240257C
+cmpwi r3, 0
+beq tcHandCalcDone
+lis r12, tcRay@ha
+addi r12, r12, tcRay@l
+lfs f0, 52(r12)
+lfs f1, 12(r3)
+fsubs f0, f0, f1
+stfs f0, 8(r1)
+lfs f0, 56(r12)
+lfs f1, 28(r3)
+fsubs f0, f0, f1
+stfs f0, 12(r1)
+lfs f0, 60(r12)
+lfs f1, 44(r3)
+fsubs f0, f0, f1
+stfs f0, 16(r1)
+addi r3, r1, 0x30
+mr r4, r31
+bl 0x02407214
+; Adjust a call-local render matrix, never the actor or collision transform.
+lfs f0, 0x3C(r1)
+lfs f1, 8(r1)
+fadds f0, f0, f1
+stfs f0, 0x3C(r1)
+lfs f0, 0x4C(r1)
+lfs f1, 12(r1)
+fadds f0, f0, f1
+stfs f0, 0x4C(r1)
+lfs f0, 0x5C(r1)
+lfs f1, 16(r1)
+fadds f0, f0, f1
+stfs f0, 0x5C(r1)
+mr r3, r31
+bl 0x024068E8
+mr r5, r3
+mr r3, r31
+addi r4, r1, 0x30
+bl 0x023FBC24
+tcHandCalcDone:
+lwz r0, 0xA4(r1)
+lwz r30, 0x98(r1)
+lwz r31, 0x9C(r1)
+mtlr r0
+addi r1, r1, 0xA0
+blr
+tcFingerJoint:
+.int 0x496E6465 ; Index3, a model joint name, not embedded game geometry
+.int 0x78330000
+
+tcHand:
+.int 0 ; current manager's native TouchPoint
+.int 0 ; visible native replacement
+.int 0 ; calculation epoch of replacement
+.int 0 ; preview owned by VR
+; the controller snapshot's generation: 4 last seen, 8 calc frames it has repeated (4 = stale)
+tcGen:
+.int 0
+.int 0
+.int 0
+tcPadReady:
+.int 0
+tcButtons:
+.int 0 ; the right grip aims
+.int 0 ; the right trigger touches now
+.int 0 ; the trigger was used to touch: kept from the game until let go
+.int 0
+
+; ---- Touch screen (10/10). mtTouch: 0 switch (1 = on), 4 asked (runtime: the left X held on this read), 16 frames touched (diagnostics), 20 the glove depth when the
+; eye is not known (750), 24 frames the hand line could not be made (diagnostics), 28 why (1 glove, 8 direction, 9 left controller not tracked, 10 eye not known yet),
+; 32.. constants, 72 the hand camera is in use this frame (runtime), 80..124 the hand camera: a 3x4 view at the hand's line start looking along it (runtime),
+; 132 reads that asked, 136 calls of the touch hook, 140 of them asked, 144 touch lines from the hand, 148 Dmin (150 = 1 m), 152 reach0 (30 = 20 cm), 156 gain (20):
+; the cursor depth for the gloves = Dmin + gain * (the wrist's distance from the eye - reach0), at least Dmin; 160 that depth (runtime), 164 1 = use it and cut it at
+; Mario's floor (first person, camera 200), 2 = use it as it is (under the player in the game's camera), 0 = the game's depth, 168 a DRC touch line from the hand is being made (runtime), 172..180 the line's start (runtime), 184 depths given,
+; 192..224 the tracking-to-world turning and 228..236 the eye's world position, kept at mtCameraStamp in every camera (runtime), 240 they are there, 244 -0.1, 248 30.0,
+; 252 unused, 256..264 the eye the controller line starts from and 268 the floor height the depth is cut at (runtime: mrEyeTarget, or the player in the game's
+; camera). Why 11: the game's camera without the player. 272 the right trigger touches on this read (runtime), 276 the trigger kept from the game until
+; it is let go (runtime). Round 7: aim = the right grip held (+4), touch = with the right trigger (+272); the line from the right hand.
+mtTouch:
+.int 0 ; off since round 8 (tc* touch)
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0x443B8000 ; +20 750.0
+.int 0
+.int 0
+.int 0x44200000 ; +32 640.0
+.int 0x43B40000 ; +36 360.0
+.int 0x3F800000 ; +40 1.0
+.int 0x44A00000 ; +44 1280.0
+.int 0x44340000 ; +48 720.0
+.int 0x00000000 ; +52 0.0
+.int 0x3F000000 ; +56 0.5
+.int 0x3FC00000 ; +60 1.5
+.int 0x38D1B717 ; +64 0.0001
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0x43160000 ; +148 Dmin 150.0
+.int 0x41F00000 ; +152 reach0 30.0
+.int 0x41A00000 ; +156 gain 20.0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0xBDCCCCCD ; +244 -0.1
+.int 0x41F00000 ; +248 30.0
+.int 0x43160000 ; +252 150.0 (unused since round 6)
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0 ; +272 the right trigger touches on this read
+.int 0 ; +276 the right trigger was used to touch: kept from the game until let go
+mtTouchInject:
+lis r12, mtTouch@ha
+addi r12, r12, mtTouch@l
+lwz r11, 136(r12)
+addi r11, r11, 1
+stw r11, 136(r12)
+li r0, 0
+stw r0, 72(r12)
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq mtTouchOrig
+lwz r0, 4(r12)
+cmpwi r0, 0
+beq mtTouchOrig
+lwz r11, 140(r12)
+addi r11, r11, 1
+stw r11, 140(r12)
+stwu r1, -0x30(r1)
+mflr r0
+stw r0, 0x34(r1)
+stw r3, 8(r1)
+stw r4, 12(r1)
+stfs f1, 16(r1)
+stfs f2, 20(r1)
+bl mtTouchCalc
+mr r0, r3
+lwz r3, 8(r1)
+lwz r4, 12(r1)
+lfs f1, 16(r1)
+lfs f2, 20(r1)
+cmpwi r0, 0
+beq mtTouchKeep
+lis r12, mtTouch@ha
+addi r12, r12, mtTouch@l
+li r4, 1
+lfs f1, 32(r12)
+lfs f2, 36(r12)
+lwz r0, 272(r12)
+cmpwi r0, 0
+bne mtTouchPress
+; aiming only: no touch for the game (r4 = 0), but the DRC controller's touch point the cursor reads (+0x110 / +0x114; r3 = the controller + 0x16C) at the
+; centre, as 0x0236A680 stores it: minus the touch area's corner (+0x18 / +0x1C) when the area (+0x18..+0x24) is valid, as it is otherwise
+li r4, 0
+lfs f3, -0x154(r3)
+lfs f4, -0x14C(r3)
+lfs f5, -0x150(r3)
+lfs f6, -0x148(r3)
+.int 0xFC032000 ; fcmpu cr0, f3, f4
+bgt mtTouchAreaNone
+.int 0xFC053000 ; fcmpu cr0, f5, f6
+bgt mtTouchAreaNone
+fsubs f3, f1, f3
+fsubs f5, f2, f5
+b mtTouchAreaSet
+mtTouchAreaNone:
+fmr f3, f1
+fmr f5, f2
+mtTouchAreaSet:
+stfs f3, -0x5C(r3)
+stfs f5, -0x58(r3)
+mtTouchPress:
+li r0, 1
+stw r0, 72(r12)
+lwz r11, 16(r12)
+addi r11, r11, 1
+stw r11, 16(r12)
+mtTouchKeep:
+lwz r0, 0x34(r1)
+mtlr r0
+addi r1, r1, 0x30
+mtTouchOrig:
+b mtTouchSet
+; r3 = 1 and mtTouch+80.. = a camera at the start of the right hand's line looking along it, else r3 = 0 (mtTouch+24 counts, +28 says why). First person: the right
+; glove's wrist along its fingers, with the glove depth (+160, +164 = 1); camera 200: Mario's eye plus the hand's reach, along the left controller (+164 = 1); the
+; game's camera: straight down onto the player's feet (+164 = 2). Rows: right = up x
+; back (level), up = back x right, back = -direction; translation = -row . start (a view matrix like the game's cameras, which look along -back)
+mtTouchCalc:
+stwu r1, -0x20(r1)
+mflr r0
+stw r0, 0x24(r1)
+stw r31, 0x1C(r1)
+stw r30, 0x18(r1)
+lis r31, mtTouch@ha
+addi r31, r31, mtTouch@l
+li r0, 0
+stw r0, 164(r31)
+; the eye a controller line starts from and the floor the depth is cut at: Mario's (mrEyeTarget; the game's camera puts the player's in, mtTouchUnder)
+lis r12, mrEyeTarget@ha
+addi r12, r12, mrEyeTarget@l
+lfs f4, 0(r12)
+stfs f4, 256(r31)
+lfs f4, 8(r12)
+stfs f4, 264(r31)
+lfs f4, 4(r12)
+stfs f4, 260(r31)
+lfs f5, 12(r12)
+fsubs f4, f4, f5
+stfs f4, 268(r31)
+lis r12, mtControl@ha
+addi r12, r12, mtControl@l
+lwz r0, 28(r12)
+cmpwi r0, 1
+bne mtTouchUnder
+; camera 200 (mtEyeBack > 0): the gloves are the game's there, the line comes from the controller itself
+lis r12, mtEyeBack@ha
+lwz r0, mtEyeBack@l(r12)
+cmpwi r0, 0
+bgt mtTouchBack
+li r0, 1
+stw r0, 28(r31)
+lis r12, mtHandCtl@ha
+addi r12, r12, mtHandCtl@l
+lwz r30, 8(r12)
+lis r11, 0x1000
+cmplw r30, r11
+blt mtTouchBack
+lis r11, 0x5000
+cmplw r30, r11
+bge mtTouchBack
+andi. r0, r30, 3
+bne mtTouchBack
+addi r11, r30, 0xB4
+; the line starts at the wrist
+lfs f4, 12(r11)
+stfs f4, 172(r31)
+lfs f4, 28(r11)
+stfs f4, 176(r31)
+lfs f4, 44(r11)
+stfs f4, 180(r31)
+; the glove depth: Dmin + gain * (|wrist - eye| - reach0), at least Dmin (+20 when the eye is not known)
+lfs f7, 20(r31)
+lis r12, mtHandCam@ha
+addi r12, r12, mtHandCam@l
+lwz r0, 60(r12)
+cmpwi r0, 0
+beq mtTouchDepthSet
+lfs f7, 12(r11)
+lfs f8, 36(r12)
+fsubs f7, f7, f8
+lfs f8, 28(r11)
+lfs f9, 40(r12)
+fsubs f8, f8, f9
+lfs f9, 44(r11)
+lfs f10, 44(r12)
+fsubs f9, f9, f10
+fmuls f7, f7, f7
+fmuls f8, f8, f8
+fadds f7, f7, f8
+fmuls f9, f9, f9
+fadds f7, f7, f9
+lfs f8, 64(r31)
+.int 0xFC074000 ; fcmpu cr0, f7, f8
+bgt mtTouchReach
+lfs f7, 148(r31)
+b mtTouchDepthSet
+mtTouchReach:
+.int 0xFD203834 ; frsqrte f9, f7
+lfs f10, 56(r31)
+lfs f11, 60(r31)
+fmuls f12, f9, f9
+fmuls f12, f12, f7
+fmuls f12, f12, f10
+fsubs f12, f11, f12
+fmuls f9, f9, f12
+fmuls f12, f9, f9
+fmuls f12, f12, f7
+fmuls f12, f12, f10
+fsubs f12, f11, f12
+fmuls f9, f9, f12
+fmuls f7, f7, f9
+lfs f8, 152(r31)
+fsubs f7, f7, f8
+lfs f8, 156(r31)
+fmuls f7, f7, f8
+lfs f8, 148(r31)
+fadds f7, f7, f8
+.int 0xFC074000 ; fcmpu cr0, f7, f8
+bgt mtTouchDepthSet
+fmr f7, f8
+mtTouchDepthSet:
+stfs f7, 160(r31)
+li r0, 1
+stw r0, 164(r31)
+; along the fingers
+lfs f1, 8(r11)
+lfs f2, 24(r11)
+lfs f3, 40(r11)
+b mtTouchDir
+; camera 200 (and first person without the glove): the line from the left controller itself, as the glove would be. M = mtTouch+192 (tracking to world).
+; direction = M . (controller rotation . p), p = the glove's preset fingers (column 2 of mtHandOff[the left preset in use]); start = the eye in +256 (Mario's / the player's)
+; + scale * M . (controller - head) (scale mtControl+52, as the gloves); the glove depth from that reach
+mtTouchBack:
+li r0, 9
+stw r0, 28(r31)
+lis r12, mtPad@ha
+addi r12, r12, mtPad@l
+lwz r0, 88(r12)
+cmpwi r0, 0
+beq mtTouchFail
+li r0, 10
+stw r0, 28(r31)
+lwz r0, 240(r31)
+cmpwi r0, 0
+beq mtTouchFail
+addi r11, r31, 192
+lis r10, mtHandCtl@ha
+addi r10, r10, mtHandCtl@l
+lwz r9, 64(r10)
+mulli r9, r9, 52
+add r9, r9, r10
+lwz r9, 20(r9)
+cmplwi r9, 23
+bgt mtTouchBackNoPreset
+mulli r9, r9, 36
+lis r10, mtHandOff@ha
+addi r10, r10, mtHandOff@l
+add r9, r9, r10
+lfs f7, 8(r9)
+lfs f8, 20(r9)
+lfs f9, 32(r9)
+b mtTouchBackP
+mtTouchBackNoPreset:
+lfs f7, 52(r31)
+lfs f8, 52(r31)
+lfs f9, 40(r31)
+fneg f9, f9
+mtTouchBackP:
+; c = the controller's rotation (rows at mtPad+20 / +36 / +52) . p
+lfs f4, 92(r12)
+fmuls f1, f4, f7
+lfs f4, 96(r12)
+fmuls f4, f4, f8
+fadds f1, f1, f4
+lfs f4, 100(r12)
+fmuls f4, f4, f9
+fadds f1, f1, f4
+lfs f4, 108(r12)
+fmuls f2, f4, f7
+lfs f4, 112(r12)
+fmuls f4, f4, f8
+fadds f2, f2, f4
+lfs f4, 116(r12)
+fmuls f4, f4, f9
+fadds f2, f2, f4
+lfs f4, 124(r12)
+fmuls f3, f4, f7
+lfs f4, 128(r12)
+fmuls f4, f4, f8
+fadds f3, f3, f4
+lfs f4, 132(r12)
+fmuls f4, f4, f9
+fadds f3, f3, f4
+; the direction = M . c
+lfs f4, 0(r11)
+fmuls f7, f4, f1
+lfs f4, 4(r11)
+fmuls f4, f4, f2
+fadds f7, f7, f4
+lfs f4, 8(r11)
+fmuls f4, f4, f3
+fadds f7, f7, f4
+lfs f4, 12(r11)
+fmuls f8, f4, f1
+lfs f4, 16(r11)
+fmuls f4, f4, f2
+fadds f8, f8, f4
+lfs f4, 20(r11)
+fmuls f4, f4, f3
+fadds f8, f8, f4
+lfs f4, 24(r11)
+fmuls f9, f4, f1
+lfs f4, 28(r11)
+fmuls f4, f4, f2
+fadds f9, f9, f4
+lfs f4, 32(r11)
+fmuls f4, f4, f3
+fadds f9, f9, f4
+; d = controller - head (tracking), the offset = scale * M . d
+lfs f1, 104(r12)
+lfs f4, 4(r12)
+fsubs f1, f1, f4
+lfs f2, 120(r12)
+lfs f4, 8(r12)
+fsubs f2, f2, f4
+lfs f3, 136(r12)
+lfs f4, 12(r12)
+fsubs f3, f3, f4
+lfs f4, 0(r11)
+fmuls f10, f4, f1
+lfs f4, 4(r11)
+fmuls f4, f4, f2
+fadds f10, f10, f4
+lfs f4, 8(r11)
+fmuls f4, f4, f3
+fadds f10, f10, f4
+lfs f4, 12(r11)
+fmuls f11, f4, f1
+lfs f4, 16(r11)
+fmuls f4, f4, f2
+fadds f11, f11, f4
+lfs f4, 20(r11)
+fmuls f4, f4, f3
+fadds f11, f11, f4
+lfs f4, 24(r11)
+fmuls f12, f4, f1
+lfs f4, 28(r11)
+fmuls f4, f4, f2
+fadds f12, f12, f4
+lfs f4, 32(r11)
+fmuls f4, f4, f3
+fadds f12, f12, f4
+lis r10, mtControl@ha
+addi r10, r10, mtControl@l
+lfs f4, 52(r10)
+fmuls f10, f10, f4
+fmuls f11, f11, f4
+fmuls f12, f12, f4
+lfs f4, 256(r31)
+fadds f4, f4, f10
+stfs f4, 172(r31)
+lfs f4, 260(r31)
+fadds f4, f4, f11
+stfs f4, 176(r31)
+lfs f4, 264(r31)
+fadds f4, f4, f12
+stfs f4, 180(r31)
+; the depth: Dmin + gain * (|offset| - reach0), at least Dmin
+fmuls f4, f10, f10
+fmuls f5, f11, f11
+fadds f4, f4, f5
+fmuls f5, f12, f12
+fadds f4, f4, f5
+lfs f1, 148(r31)
+lfs f5, 64(r31)
+.int 0xFC042800 ; fcmpu cr0, f4, f5
+ble mtTouchBackDepth
+.int 0xFCC02034 ; frsqrte f6, f4
+lfs f10, 56(r31)
+lfs f11, 60(r31)
+fmuls f13, f6, f6
+fmuls f13, f13, f4
+fmuls f13, f13, f10
+fsubs f13, f11, f13
+fmuls f6, f6, f13
+fmuls f13, f6, f6
+fmuls f13, f13, f4
+fmuls f13, f13, f10
+fsubs f13, f11, f13
+fmuls f6, f6, f13
+fmuls f4, f4, f6
+lfs f5, 152(r31)
+fsubs f4, f4, f5
+lfs f5, 156(r31)
+fmuls f4, f4, f5
+fadds f4, f4, f1
+.int 0xFC040800 ; fcmpu cr0, f4, f1
+ble mtTouchBackDepth
+fmr f1, f4
+mtTouchBackDepth:
+stfs f1, 160(r31)
+li r0, 1
+stw r0, 164(r31)
+fmr f1, f7
+fmr f2, f8
+fmr f3, f9
+b mtTouchDir
+; the game's own camera: the controller line as in camera 200, from the player's eye (the player kept by mtCineCheck in mtCine+12: feet +1976 / +1980 / +1984,
+; eye = feet + the standing eye height mrEyeTarget+12), the depth cut at the player's floor
+mtTouchUnder:
+li r0, 11
+stw r0, 28(r31)
+lis r12, mtCine@ha
+addi r12, r12, mtCine@l
+lwz r12, 12(r12)
+lis r11, 0x1000
+cmplw r12, r11
+blt mtTouchFail
+lis r11, 0x5000
+cmplw r12, r11
+bge mtTouchFail
+andi. r0, r12, 3
+bne mtTouchFail
+lwz r0, 0(r12)
+lis r11, 0x1031
+ori r11, r11, 0x9EF4
+cmpw r0, r11
+bne mtTouchFail
+lis r11, mrEyeTarget@ha
+addi r11, r11, mrEyeTarget@l
+lfs f4, 12(r11)
+lfs f5, 1976(r12)
+stfs f5, 256(r31)
+lfs f5, 1984(r12)
+stfs f5, 264(r31)
+lfs f5, 1980(r12)
+stfs f5, 268(r31)
+fadds f5, f5, f4
+stfs f5, 260(r31)
+b mtTouchBack
+; the direction (f1, f2, f3) to unit length; back = -direction
+mtTouchDir:
+li r0, 8
+stw r0, 28(r31)
+fmuls f4, f1, f1
+fmuls f5, f2, f2
+fadds f4, f4, f5
+fmuls f5, f3, f3
+fadds f4, f4, f5
+lfs f5, 64(r31)
+.int 0xFC042800 ; fcmpu cr0, f4, f5
+bgt mtTouchFingers
+b mtTouchFail
+mtTouchFingers:
+.int 0xFCC02034 ; frsqrte f6, f4
+lfs f10, 56(r31)
+lfs f11, 60(r31)
+fmuls f12, f6, f6
+fmuls f12, f12, f4
+fmuls f12, f12, f10
+fsubs f12, f11, f12
+fmuls f6, f6, f12
+fmuls f12, f6, f6
+fmuls f12, f12, f4
+fmuls f12, f12, f10
+fsubs f12, f11, f12
+fmuls f6, f6, f12
+fmuls f1, f1, f6
+fmuls f2, f2, f6
+fmuls f3, f3, f6
+; pointing down with the glove depth (+164 = 1): no farther than where the line meets the floor in +268 (Mario's / the player's), at least +248
+lwz r0, 164(r31)
+cmpwi r0, 1
+bne mtTouchNoFloor
+lfs f4, 244(r31)
+.int 0xFC041000 ; fcmpu cr0, f4, f2
+bgt mtTouchFloor
+b mtTouchNoFloor
+mtTouchFloor:
+lfs f4, 268(r31)
+lfs f5, 176(r31)
+fsubs f5, f5, f4
+fneg f4, f2
+.int 0xECA52024 ; fdivs f5, f5, f4
+lfs f4, 248(r31)
+.int 0xFC052000 ; fcmpu cr0, f5, f4
+bgt mtTouchFloorMin
+fmr f5, f4
+mtTouchFloorMin:
+lfs f4, 160(r31)
+.int 0xFC042800 ; fcmpu cr0, f4, f5
+bgt mtTouchFloorCut
+b mtTouchNoFloor
+mtTouchFloorCut:
+stfs f5, 160(r31)
+mtTouchNoFloor:
+fneg f1, f1
+fneg f2, f2
+fneg f3, f3
+; right = (bz, 0, -bx) / |.|, or (1, 0, 0) when the line points straight up or down
+fmuls f4, f3, f3
+fmuls f5, f1, f1
+fadds f4, f4, f5
+lfs f5, 64(r31)
+.int 0xFC042800 ; fcmpu cr0, f4, f5
+bgt mtTouchROk
+lfs f7, 40(r31)
+lfs f8, 52(r31)
+b mtTouchRDone
+mtTouchROk:
+.int 0xFCC02034 ; frsqrte f6, f4
+fmuls f12, f6, f6
+fmuls f12, f12, f4
+fmuls f12, f12, f10
+fsubs f12, f11, f12
+fmuls f6, f6, f12
+fmuls f12, f6, f6
+fmuls f12, f12, f4
+fmuls f12, f12, f10
+fsubs f12, f11, f12
+fmuls f6, f6, f12
+fmuls f7, f3, f6
+fneg f8, f1
+fmuls f8, f8, f6
+mtTouchRDone:
+; up = back x right = (by rz, bz rx - bx rz, -by rx)
+fmuls f9, f2, f8
+fmuls f10, f3, f7
+fmuls f11, f1, f8
+fsubs f10, f10, f11
+fmuls f11, f2, f7
+fneg f11, f11
+lfs f4, 172(r31)
+lfs f5, 176(r31)
+lfs f6, 180(r31)
+stfs f7, 80(r31)
+lfs f12, 52(r31)
+stfs f12, 84(r31)
+stfs f8, 88(r31)
+fmuls f12, f7, f4
+fmuls f13, f8, f6
+fadds f12, f12, f13
+fneg f12, f12
+stfs f12, 92(r31)
+stfs f9, 96(r31)
+stfs f10, 100(r31)
+stfs f11, 104(r31)
+fmuls f12, f9, f4
+fmuls f13, f10, f5
+fadds f12, f12, f13
+fmuls f13, f11, f6
+fadds f12, f12, f13
+fneg f12, f12
+stfs f12, 108(r31)
+stfs f1, 112(r31)
+stfs f2, 116(r31)
+stfs f3, 120(r31)
+fmuls f12, f1, f4
+fmuls f13, f2, f5
+fadds f12, f12, f13
+fmuls f13, f3, f6
+fadds f12, f12, f13
+fneg f12, f12
+stfs f12, 124(r31)
+li r0, 0
+stw r0, 28(r31)
+li r3, 1
+b mtTouchCalcOut
+mtTouchFail:
+lwz r11, 24(r31)
+addi r11, r11, 1
+stw r11, 24(r31)
+li r3, 0
+mtTouchCalcOut:
+lwz r30, 0x18(r1)
+lwz r31, 0x1C(r1)
+lwz r0, 0x24(r1)
+mtlr r0
+addi r1, r1, 0x20
+blr
+; hook 0x024665A4 (the touch -> world line asks for the DRC camera, bl 0x02429674 with r3 = the cursor's camera owner): while the hand camera is in use, it is that camera
+; (and +168 tells mtTouchDepth that this line is the hand's)
+mtTouchCam:
+lis r12, mtTouch@ha
+addi r12, r12, mtTouch@l
+lwz r0, 72(r12)
+cmpwi r0, 0
+beq mtTouchCamOrig
+lwz r11, 144(r12)
+addi r11, r11, 1
+stw r11, 144(r12)
+li r0, 1
+stw r0, 168(r12)
+addi r3, r12, 80
+blr
+mtTouchCamOrig:
+b mtDrcCamGet
+; hook 0x024664A4 (inside 0x02466470: `fneg f1, f0` = the cursor's depth along the line, from the reference point): for the hand's DRC line with the glove depth
+; (+168, +164), the glove depth +160 instead
+mtTouchDepth:
+fneg f1, f0
+lis r12, mtTouch@ha
+addi r12, r12, mtTouch@l
+lwz r0, 168(r12)
+cmpwi r0, 0
+beqlr
+li r0, 0
+stw r0, 168(r12)
+lwz r0, 164(r12)
+cmpwi r0, 0
+beqlr
+lfs f1, 160(r12)
+lwz r11, 184(r12)
+addi r11, r11, 1
+stw r11, 184(r12)
+blr
+; the player's touch cursor (0x021A5318, r30 = the cursor) asks "is the screen held" (0x0249533C) first to decide "touching" (0x021A5368), then three times
+; before it moves the hand to the touch point (0x021A5490 / 5530 / 5550). While the right hand aims without the trigger (hand camera in use, +72, and no
+; +272): the first answer is "no" with the cursor's 5-frame countdown (+0x24) kept up, so the hand stays shown but nothing is touched; the others "yes".
+mtTouchQHeld:
+lis r12, mtTouch@ha
+addi r12, r12, mtTouch@l
+lwz r0, 72(r12)
+cmpwi r0, 0
+beq mtTouchQNative
+lwz r0, 272(r12)
+cmpwi r0, 0
+bne mtTouchQNative
+li r0, 6
+stw r0, 0x24(r30)
+li r3, 0
+blr
+mtTouchQPlace:
+lis r12, mtTouch@ha
+addi r12, r12, mtTouch@l
+lwz r0, 72(r12)
+cmpwi r0, 0
+beq mtTouchQNative
+li r3, 1
+blr
+mtTouchQNative:
+b mtTouchHeldQ
+
+; ---- Captain Toad's lamp follows the view (10/10). mtLamp: 0 switch (1 = on), 4 times a lamp emitter set was turned (diagnostics), 8 / 12 / 16 the view direction
+; (runtime, from the eye camera), 20 that direction is there (runtime), 24 the set was turned with the body (runtime, from mtFxFollow), 28 next slot and 32..60 the last 8 emitter set ids of the player's effects seen in first person
+; as Captain Toad (diagnostics), 64.. scratch, 96 0.0001, 100 0.5, 104 1.5, 108 1 = the lamp's place also turns round the eye, 112..144 the turn (scratch),
+; 148 / 152 the 0xD162 set aimed where its matrix is written (mtLampSet) and the pad read it was at, 156 / 160 the same for 0xD169, 164 sets aimed there,
+; 168 lamp sets whose matrix was written (diagnostics), 172 400^2, 176 the record (148 or 156) of the set being aimed (scratch). A lamp set = a live emitter set
+; ([emitter+0x80]) whose emitter is drawn from the resource 0xD162 / 0xD169 ([emitter+0x130]+0x38).
+mtLamp:
+.int 0 ; off since 10/10: the light is the spot light, see hlCaptureView
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0x38D1B717 ; +96 0.0001
+.int 0x3F000000 ; +100 0.5
+.int 0x3FC00000 ; +104 1.5
+.int 1 ; +108
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0 ; +148
+.int 0 ; +152
+.int 0 ; +156
+.int 0 ; +160
+.int 0 ; +164
+.int 0 ; +168
+.int 0x481C4000 ; +172 160000.0 = 400^2
+.int 0 ; +176
+; r3 = a live emitter set (from mtFxFollow after the body turn, or mtLampSet right after the game wrote its matrix); keeps r3, r4, r6, r7, r10
+mtLampAim:
+lis r12, mtLamp@ha
+addi r12, r12, mtLamp@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq mtLampOut
+lwz r0, 20(r12)
+cmpwi r0, 0
+beq mtLampOut
+lis r11, mtControl@ha
+addi r11, r11, mtControl@l
+lwz r0, 28(r11)
+cmpwi r0, 1
+bne mtLampOut
+lis r11, mtPipeEye@ha
+addi r11, r11, mtPipeEye@l
+lwz r0, 16(r11)
+cmpwi r0, 0
+beq mtLampOut
+; the lamp: one of the set's emitters (the first at es+0xC, then +0x124 while it is still this set's, at most 4) drawn from the resource 0xD162 / 0xD169
+; ([emitter+0x130]: +0x38 the id, +0x2E8 = -1); r0 = the id (uses r8, r9, r11)
+lwz r8, 12(r3)
+li r9, 4
+mtLampAimIdLoop:
+lis r0, 0x1000
+cmplw r8, r0
+blt mtLampOut
+lis r0, 0x5000
+cmplw r8, r0
+bge mtLampOut
+andi. r0, r8, 3
+bne mtLampOut
+lwz r0, 0x80(r8)
+cmpw r0, r3
+bne mtLampOut
+lwz r11, 0x130(r8)
+lis r0, 0x1000
+cmplw r11, r0
+blt mtLampAimIdNext
+lis r0, 0x5000
+cmplw r11, r0
+bge mtLampAimIdNext
+andi. r0, r11, 3
+bne mtLampAimIdNext
+lwz r0, 0x2E8(r11)
+cmpwi r0, -1
+bne mtLampAimIdNext
+lwz r0, 0x38(r11)
+cmplwi r0, 0xD162
+beq mtLampAimIdFound
+cmplwi r0, 0xD169
+beq mtLampAimIdFound
+mtLampAimIdNext:
+lwz r8, 0x124(r8)
+addi r9, r9, -1
+cmpwi r9, 0
+bgt mtLampAimIdLoop
+b mtLampOut
+mtLampAimIdFound:
+lwz r5, 28(r12)
+andi. r5, r5, 7
+slwi r8, r5, 2
+add r8, r8, r12
+stw r0, 32(r8)
+addi r5, r5, 1
+stw r5, 28(r12)
+mtLampYes:
+; already aimed on this pad read (its record: 148 for 0xD162, 156 for 0xD169): leave it
+li r9, 148
+cmplwi r0, 0xD162
+beq mtLampSlotSet
+li r9, 156
+mtLampSlotSet:
+stw r9, 176(r12)
+add r9, r9, r12
+lis r11, mtFireStat@ha
+addi r11, r11, mtFireStat@l
+lwz r11, 4(r11)
+lwz r0, 0(r9)
+cmpw r0, r3
+bne mtLampFresh
+lwz r0, 4(r9)
+cmpw r0, r11
+beq mtLampOut
+mtLampFresh:
+lwz r11, 4(r12)
+addi r11, r11, 1
+stw r11, 4(r12)
+; not turned (mtLamp+24 = 0): the lamp follows the game's own head, so the body's forward is the player's facing ([[player+0xC0]+0]+0xC: x, z)
+lwz r0, 24(r12)
+cmpwi r0, 0
+bne mtLampTurned
+lis r8, mtHideActor@ha
+lwz r8, mtHideActor@l(r8)
+lis r11, 0x1000
+cmplw r8, r11
+blt mtLampOut
+lis r11, 0x5000
+cmplw r8, r11
+bge mtLampOut
+andi. r0, r8, 3
+bne mtLampOut
+lwz r8, 0xC0(r8)
+lis r11, 0x1000
+cmplw r8, r11
+blt mtLampOut
+lis r11, 0x5000
+cmplw r8, r11
+bge mtLampOut
+andi. r0, r8, 3
+bne mtLampOut
+lwz r8, 0(r8)
+lis r11, 0x1000
+cmplw r8, r11
+blt mtLampOut
+lis r11, 0x5000
+cmplw r8, r11
+bge mtLampOut
+andi. r0, r8, 3
+bne mtLampOut
+lfs f1, 0xC(r8)
+lfs f2, 0x14(r8)
+b mtLampBF
+mtLampTurned:
+; the body's forward (fx, fz), as the body turn works it out: the tracking forward -Z, or mtBodyFollow's heading (mtPipeEye+32), taken into the world by mtHandCam
+lis r11, mtHandCam@ha
+addi r11, r11, mtHandCam@l
+lfs f1, 8(r11)
+fneg f1, f1
+lfs f2, 32(r11)
+fneg f2, f2
+lis r8, mtPipeEye@ha
+addi r8, r8, mtPipeEye@l
+lwz r0, 32(r8)
+cmpwi r0, 0
+beq mtLampBF
+lis r8, mtBodyFollow@ha
+addi r8, r8, mtBodyFollow@l
+lfs f3, 0(r8)
+lfs f4, 4(r8)
+lfs f5, 0(r11)
+fmuls f5, f5, f3
+lfs f6, 8(r11)
+fmuls f6, f6, f4
+fadds f1, f5, f6
+lfs f5, 24(r11)
+fmuls f5, f5, f3
+lfs f6, 32(r11)
+fmuls f6, f6, f4
+fadds f2, f5, f6
+mtLampBF:
+fmuls f3, f1, f1
+fmuls f4, f2, f2
+fadds f3, f3, f4
+lfs f4, 96(r12)
+.int 0xFC032000 ; fcmpu cr0, f3, f4
+bgt mtLampFbOk
+b mtLampOut
+mtLampFbOk:
+.int 0xFCA01834 ; frsqrte f5, f3
+lfs f6, 100(r12)
+lfs f7, 104(r12)
+fmuls f8, f5, f5
+fmuls f8, f8, f3
+fmuls f8, f8, f6
+fsubs f8, f7, f8
+fmuls f5, f5, f8
+fmuls f8, f5, f5
+fmuls f8, f8, f3
+fmuls f8, f8, f6
+fsubs f8, f7, f8
+fmuls f5, f5, f8
+fmuls f1, f1, f5
+fmuls f2, f2, f5
+stfs f1, 64(r12)
+stfs f2, 68(r12)
+; the view's right = (hz, 0, -hx) / |.|
+lfs f1, 8(r12)
+lfs f2, 16(r12)
+fmuls f3, f1, f1
+fmuls f4, f2, f2
+fadds f3, f3, f4
+lfs f4, 96(r12)
+.int 0xFC032000 ; fcmpu cr0, f3, f4
+bgt mtLampRhOk
+b mtLampOut
+mtLampRhOk:
+.int 0xFCA01834 ; frsqrte f5, f3
+lfs f6, 100(r12)
+lfs f7, 104(r12)
+fmuls f8, f5, f5
+fmuls f8, f8, f3
+fmuls f8, f8, f6
+fsubs f8, f7, f8
+fmuls f5, f5, f8
+fmuls f8, f5, f5
+fmuls f8, f8, f3
+fmuls f8, f8, f6
+fsubs f8, f7, f8
+fmuls f5, f5, f8
+fmuls f2, f2, f5
+fneg f1, f1
+fmuls f1, f1, f5
+stfs f2, 72(r12)
+stfs f1, 76(r12)
+; the view's up = h x rh = (hy rhz, hz rhx - hx rhz, -hy rhx)
+lfs f1, 8(r12)
+lfs f2, 12(r12)
+lfs f3, 16(r12)
+lfs f4, 72(r12)
+lfs f5, 76(r12)
+fmuls f6, f2, f5
+stfs f6, 80(r12)
+fmuls f6, f3, f4
+fmuls f7, f1, f5
+fsubs f6, f6, f7
+stfs f6, 84(r12)
+fmuls f6, f2, f4
+fneg f6, f6
+stfs f6, 88(r12)
+; D = rh rb^T + uh ub^T + h fb^T with rb = (fbz, 0, -fbx), ub = (0, 1, 0):
+; D00 = rhx fbz + hx fbx, D01 = uhx, D02 = hx fbz - rhx fbx; D10 = hy fbx, D11 = uhy, D12 = hy fbz; D20 = rhz fbz + hz fbx, D21 = uhz, D22 = hz fbz - rhz fbx
+lfs f8, 64(r12)
+lfs f9, 68(r12)
+fmuls f10, f4, f9
+fmuls f11, f1, f8
+fadds f10, f10, f11
+stfs f10, 112(r12)
+lfs f10, 80(r12)
+stfs f10, 116(r12)
+fmuls f10, f1, f9
+fmuls f11, f4, f8
+fsubs f10, f10, f11
+stfs f10, 120(r12)
+fmuls f10, f2, f8
+stfs f10, 124(r12)
+lfs f10, 84(r12)
+stfs f10, 128(r12)
+fmuls f10, f2, f9
+stfs f10, 132(r12)
+fmuls f10, f5, f9
+fmuls f11, f3, f8
+fadds f10, f10, f11
+stfs f10, 136(r12)
+lfs f10, 88(r12)
+stfs f10, 140(r12)
+fmuls f10, f3, f9
+fmuls f11, f5, f8
+fsubs f10, f10, f11
+stfs f10, 144(r12)
+lfs f5, 112(r12)
+lfs f6, 116(r12)
+lfs f7, 120(r12)
+lfs f8, 124(r12)
+lfs f9, 128(r12)
+lfs f10, 132(r12)
+lfs f11, 136(r12)
+lfs f12, 140(r12)
+lfs f13, 144(r12)
+; recorded as aimed on this pad read
+lwz r9, 176(r12)
+add r9, r9, r12
+stw r3, 0(r9)
+lis r11, mtFireStat@ha
+addi r11, r11, mtFireStat@l
+lwz r11, 4(r11)
+stw r11, 4(r9)
+; both matrices of the set (es+0x1E8 and es+0x218, 3x4, rows at 0 / 16 / 32): each rotation column times D, the place turned round the eye
+addi r5, r3, 0x1E8
+li r9, 2
+mtLampMtx:
+li r8, 3
+mr r11, r5
+mtLampCol:
+lfs f1, 0(r11)
+lfs f2, 16(r11)
+lfs f3, 32(r11)
+fmuls f0, f5, f1
+fmuls f4, f6, f2
+fadds f0, f0, f4
+fmuls f4, f7, f3
+fadds f0, f0, f4
+stfs f0, 0(r11)
+fmuls f0, f8, f1
+fmuls f4, f9, f2
+fadds f0, f0, f4
+fmuls f4, f10, f3
+fadds f0, f0, f4
+stfs f0, 16(r11)
+fmuls f0, f11, f1
+fmuls f4, f12, f2
+fadds f0, f0, f4
+fmuls f4, f13, f3
+fadds f0, f0, f4
+stfs f0, 32(r11)
+addi r11, r11, 4
+addi r8, r8, -1
+cmpwi r8, 0
+bne mtLampCol
+lwz r0, 108(r12)
+cmpwi r0, 0
+beq mtLampNextMtx
+lis r8, mtHandCam@ha
+addi r8, r8, mtHandCam@l
+lwz r0, 60(r8)
+cmpwi r0, 0
+beq mtLampNextMtx
+lfs f1, 12(r5)
+lfs f0, 36(r8)
+fsubs f1, f1, f0
+lfs f2, 28(r5)
+lfs f0, 40(r8)
+fsubs f2, f2, f0
+lfs f3, 44(r5)
+lfs f0, 44(r8)
+fsubs f3, f3, f0
+fmuls f0, f5, f1
+fmuls f4, f6, f2
+fadds f0, f0, f4
+fmuls f4, f7, f3
+fadds f0, f0, f4
+lfs f4, 36(r8)
+fadds f0, f0, f4
+stfs f0, 12(r5)
+fmuls f0, f8, f1
+fmuls f4, f9, f2
+fadds f0, f0, f4
+fmuls f4, f10, f3
+fadds f0, f0, f4
+lfs f4, 40(r8)
+fadds f0, f0, f4
+stfs f0, 28(r5)
+fmuls f0, f11, f1
+fmuls f4, f12, f2
+fadds f0, f0, f4
+fmuls f4, f13, f3
+fadds f0, f0, f4
+lfs f4, 44(r8)
+fadds f0, f0, f4
+stfs f0, 44(r5)
+mtLampNextMtx:
+addi r5, r5, 0x30
+addi r9, r9, -1
+cmpwi r9, 0
+bne mtLampMtx
+mtLampOut:
+blr
+
+; ---- Captain Toad's lamp aimed where the game writes its emitter set's matrix (10/10, round 4). 0x02519F30 (r3 handle, r4 info, r5 matrix) writes the set
+; es = [[handle+4]+0] (es+0x1E8 scaled, es+0x218 as given); every keeper's follow update ends there. Hooked at its two epilogues (es in r12; everything but r1
+; is free there, LR and r30 / r31 come back from the stack).
+mtLampSetA:
+mr r3, r12
+bl mtLampSet
+lwz r0, 0x44(r1)
+b mtLampSetRetA
+mtLampSetB:
+mr r3, r12
+bl mtLampSet
+lwz r0, 0x44(r1)
+b mtLampSetRetB
+; r3 = the emitter set just written
+mtLampSet:
+lis r11, 0x1000
+cmplw r3, r11
+blt mtLampSetOut
+lis r11, 0x5000
+cmplw r3, r11
+bge mtLampSetOut
+andi. r0, r3, 3
+bne mtLampSetOut
+; the lamp: one of the set's emitters (the first at es+0xC, then +0x124 while it is still this set's, at most 4) drawn from the resource 0xD162 / 0xD169
+; ([emitter+0x130]: +0x38 the id, +0x2E8 = -1); r0 = the id (uses r8, r9, r11)
+lwz r8, 12(r3)
+li r9, 4
+mtLampSetIdLoop:
+lis r0, 0x1000
+cmplw r8, r0
+blt mtLampSetOut
+lis r0, 0x5000
+cmplw r8, r0
+bge mtLampSetOut
+andi. r0, r8, 3
+bne mtLampSetOut
+lwz r0, 0x80(r8)
+cmpw r0, r3
+bne mtLampSetOut
+lwz r11, 0x130(r8)
+lis r0, 0x1000
+cmplw r11, r0
+blt mtLampSetIdNext
+lis r0, 0x5000
+cmplw r11, r0
+bge mtLampSetIdNext
+andi. r0, r11, 3
+bne mtLampSetIdNext
+lwz r0, 0x2E8(r11)
+cmpwi r0, -1
+bne mtLampSetIdNext
+lwz r0, 0x38(r11)
+cmplwi r0, 0xD162
+beq mtLampSetIdFound
+cmplwi r0, 0xD169
+beq mtLampSetIdFound
+mtLampSetIdNext:
+lwz r8, 0x124(r8)
+addi r9, r9, -1
+cmpwi r9, 0
+bgt mtLampSetIdLoop
+b mtLampSetOut
+mtLampSetIdFound:
+lis r12, mtLamp@ha
+addi r12, r12, mtLamp@l
+li r9, 148
+cmplwi r0, 0xD162
+beq mtLampSetSlot
+li r9, 156
+mtLampSetSlot:
+add r9, r9, r12
+lwz r11, 168(r12)
+addi r11, r11, 1
+stw r11, 168(r12)
+lwz r0, 0(r12)
+cmpwi r0, 0
+beq mtLampSetOut
+lwz r0, 20(r12)
+cmpwi r0, 0
+beq mtLampSetOut
+lis r11, mtControl@ha
+addi r11, r11, mtControl@l
+lwz r0, 28(r11)
+cmpwi r0, 1
+bne mtLampSetOut
+lis r11, mtPipeEye@ha
+addi r11, r11, mtPipeEye@l
+lwz r0, 16(r11)
+cmpwi r0, 0
+beq mtLampSetOut
+; his own lamp: the set's place within 400 of Toad's eye on each axis
+lis r11, mrEyeTarget@ha
+addi r11, r11, mrEyeTarget@l
+lfs f2, 172(r12)
+lfs f0, 500(r3)
+lfs f1, 0(r11)
+fsubs f0, f0, f1
+fmuls f0, f0, f0
+.int 0xFC001000 ; fcmpu cr0, f0, f2
+bgt mtLampSetOut
+lfs f0, 516(r3)
+lfs f1, 4(r11)
+fsubs f0, f0, f1
+fmuls f0, f0, f0
+.int 0xFC001000 ; fcmpu cr0, f0, f2
+bgt mtLampSetOut
+lfs f0, 532(r3)
+lfs f1, 8(r11)
+fsubs f0, f0, f1
+fmuls f0, f0, f0
+.int 0xFC001000 ; fcmpu cr0, f0, f2
+bgt mtLampSetOut
+mflr r0
+stwu r1, -0x20(r1)
+stw r0, 0x24(r1)
+li r0, 0
+stw r0, 24(r12)
+; a fresh matrix: forget that this set was aimed, so mtLampAim aims it again (and records it)
+stw r0, 0(r9)
+bl mtLampAim
+lis r12, mtLamp@ha
+addi r12, r12, mtLamp@l
+lwz r11, 164(r12)
+addi r11, r11, 1
+stw r11, 164(r12)
+lwz r0, 0x24(r1)
+mtlr r0
+addi r1, r1, 0x20
+mtLampSetOut:
+blr
+
+; ---- Captain Toad's headlamp: the player's spot light takes the first-person view's direction.
+; Use the completed first-person view only for the primary player's headlamp.
+; Native position, activation, brightness, range and wall collision remain intact.
+; Other executable layouts retain their native lamp until independently verified.
+hlCaptureView:
+lis r11, hlPose@ha
+addi r11, r11, hlPose@l
+lis r12, mtControl@ha
+addi r12, r12, mtControl@l
+lwz r0, 0(r12)
+cmpwi r0, 1
+bne hlCaptureInvalidate
+lis r8, mrSceneClass@ha
+lwz r0, mrSceneClass@l(r8)
+lis r8, 0x1032
+ori r8, r8, 0x86DC
+cmpw r0, r8
+bne hlCaptureInvalidate
+; Auxiliary cameras and the second eye must not replace the player view.
+cmpwi r10, 0
+bne hlCaptureDone
+lwz r0, 28(r12)
+cmpwi r0, 1
+bne hlCaptureDone
+li r0, 0
+stw r0, 0(r11)
+stw r0, 8(r11)
+lis r8, mtHideActor@ha
+lwz r7, mtHideActor@l(r8)
+lis r8, 0x1000
+cmplw r7, r8
+blt hlCaptureDone
+lis r8, 0x4FFF
+cmplw r7, r8
+bge hlCaptureDone
+andi. r0, r7, 3
+bne hlCaptureDone
+lwz r0, 0(r7)
+lis r8, 0x1031
+ori r8, r8, 0x9EF4
+cmpw r0, r8
+bne hlCaptureDone
+stw r7, 12(r11)
+; Follow the same active-model selection as the existing first-person culler.
+lwz r7, 0xFC(r7)
+lis r8, 0x1000
+cmplw r7, r8
+blt hlCaptureDone
+lis r8, 0x4FFF
+cmplw r7, r8
+bge hlCaptureDone
+andi. r0, r7, 3
+bne hlCaptureDone
+lwz r6, 0x18(r7)
+cmplwi r6, 7
+bgt hlCaptureDone
+lwz r7, 0x14(r7)
+lis r8, 0x1000
+cmplw r7, r8
+blt hlCaptureDone
+lis r8, 0x4FFF
+cmplw r7, r8
+bge hlCaptureDone
+andi. r0, r7, 3
+bne hlCaptureDone
+mulli r6, r6, 4
+add r7, r7, r6
+lwz r7, 0(r7)
+lis r8, 0x1000
+cmplw r7, r8
+blt hlCaptureDone
+lis r8, 0x4FFF
+cmplw r7, r8
+bge hlCaptureDone
+andi. r0, r7, 3
+bne hlCaptureDone
+li r6, 0
+hlSpotOwner:
+lis r8, 0x1000
+cmplw r7, r8
+blt hlSpotNextOwner
+lis r8, 0x4FFF
+cmplw r7, r8
+bge hlSpotNextOwner
+andi. r0, r7, 3
+bne hlSpotNextOwner
+lwz r8, 0x6C(r7)
+lis r5, 0x1000
+cmplw r8, r5
+blt hlSpotNextOwner
+lis r5, 0x4FFF
+cmplw r8, r5
+bge hlSpotNextOwner
+andi. r0, r8, 3
+bne hlSpotNextOwner
+lwz r0, 0x18(r8)
+cmpw r0, r7
+bne hlSpotNextOwner
+; The captain has one spotlight and one point light. Do not steer the latter.
+lwz r0, 0(r8)
+cmpwi r0, 2
+bne hlSpotNextOwner
+lwz r4, 8(r8)
+lis r5, 0x1000
+cmplw r4, r5
+blt hlSpotNextOwner
+lis r5, 0x4FFF
+cmplw r4, r5
+bge hlSpotNextOwner
+andi. r0, r4, 3
+bne hlSpotNextOwner
+li r3, 0
+hlSpotScan:
+lwz r8, 0(r4)
+lis r5, 0x1000
+cmplw r8, r5
+blt hlSpotScanNext
+lis r5, 0x4FFF
+cmplw r8, r5
+bge hlSpotScanNext
+andi. r0, r8, 3
+bne hlSpotScanNext
+lwz r0, 0(r8)
+lis r5, 0x1036
+ori r5, r5, 0xEAA4
+cmpw r0, r5
+bne hlSpotScanNext
+; Authored headlamp offset (0,80,0) and rotation (-90,0,0).
+lwz r0, 0x2C(r8)
+cmpwi r0, 0
+bne hlSpotScanNext
+lwz r0, 0x30(r8)
+lis r5, 0x42A0
+cmpw r0, r5
+bne hlSpotScanNext
+lwz r0, 0x34(r8)
+cmpwi r0, 0
+bne hlSpotScanNext
+lwz r0, 0x38(r8)
+lis r5, 0xC2B4
+cmpw r0, r5
+bne hlSpotScanNext
+lwz r0, 0x3C(r8)
+cmpwi r0, 0
+bne hlSpotScanNext
+lwz r0, 0x40(r8)
+cmpwi r0, 0
+bne hlSpotScanNext
+; Ambiguous identity leaves all lights native.
+lwz r0, 8(r11)
+cmpwi r0, 0
+bne hlCaptureInvalidate
+stw r8, 8(r11)
+hlSpotScanNext:
+addi r4, r4, 4
+addi r3, r3, 1
+cmpwi r3, 2
+blt hlSpotScan
+lwz r0, 8(r11)
+cmpwi r0, 0
+bne hlCaptureCommit
+hlSpotNextOwner:
+cmpwi r6, 1
+beq hlCaptureDone
+li r6, 1
+lwz r7, 12(r11)
+b hlSpotOwner
+hlCaptureCommit:
+lis r12, mtHideModel@ha
+addi r12, r12, mtHideModel@l
+lwz r0, 12(r12)
+stw r0, 4(r11)
+; View row 2 is minus world forward, including head yaw/pitch and rig yaw.
+; Native collision and light submission both negate this direction once.
+lwz r0, 32(r9)
+stw r0, 16(r11)
+lwz r0, 36(r9)
+stw r0, 20(r11)
+lwz r0, 40(r9)
+stw r0, 24(r11)
+li r0, 1
+stw r0, 0(r11)
+hlCaptureDone:
+blr
+hlCaptureInvalidate:
+li r0, 0
+stw r0, 0(r11)
+stw r0, 8(r11)
+blr
+hlPose:
+.int 0 ; valid
+.int 0 ; scene calculation epoch
+.int 0 ; current player spotlight identity (never dereferenced by the hook)
+.int 0 ; primary player identity
+.int 0 ; negative forward x
+.int 0 ; negative forward y
+.int 0 ; negative forward z
+
+; After the native joint direction is extracted, before collision and submit.
+; Replace only the three call-local direction words, not the animated skeleton.
+; (hooked at 0x02476E6C, with the other hooks after mtFxFollow)
+hlSpotDirection:
+stwu r1, -0x20(r1)
+stw r0, 8(r1)
+.int 0x7C000026 ; mfcr r0
+stw r0, 12(r1)
+stw r5, 16(r1)
+stw r11, 20(r1)
+stw r12, 24(r1)
+lis r11, hlPose@ha
+addi r11, r11, hlPose@l
+lwz r0, 0(r11)
+cmpwi r0, 1
+bne hlSpotReturn
+lwz r0, 8(r11)
+cmpw r0, r31
+bne hlSpotReturn
+lis r12, rrEnabled@ha
+lwz r0, rrEnabled@l(r12)
+cmpwi r0, 0
+beq hlSpotReturn
+lis r12, mtControl@ha
+lwz r0, mtControl@l(r12)
+cmpwi r0, 1
+bne hlSpotReturn
+lis r12, mrSceneClass@ha
+lwz r0, mrSceneClass@l(r12)
+lis r5, 0x1032
+ori r5, r5, 0x86DC
+cmpw r0, r5
+bne hlSpotReturn
+lis r12, mtHideActor@ha
+lwz r0, mtHideActor@l(r12)
+lwz r5, 12(r11)
+cmpw r0, r5
+bne hlSpotReturn
+lis r12, mtHideModel@ha
+addi r12, r12, mtHideModel@l
+lwz r0, 12(r12)
+lwz r5, 4(r11)
+subf r5, r5, r0
+cmplwi r5, 1
+bgt hlSpotReturn
+; Native stack +0x34..0x3C, adjusted for this hook's own stack frame.
+lwz r0, 16(r11)
+stw r0, 0x54(r1)
+lwz r0, 20(r11)
+stw r0, 0x58(r1)
+lwz r0, 24(r11)
+stw r0, 0x5C(r1)
+hlSpotReturn:
+lwz r5, 16(r1)
+lwz r11, 20(r1)
+lwz r12, 24(r1)
+lwz r0, 12(r1)
+.int 0x7C0FF120 ; mtcrf 255, r0
+lwz r0, 8(r1)
+addi r1, r1, 0x20
+lis r12, 0x1034
+blr
+
+; ---- Captain Toad's lamp aimed where it is drawn (10/10, round 3). mtLampSlots: per lamp id (0xD162 at +0, 0xD169 at +120): 0 the emitter last aimed, 4 the pad read it
+; was aimed at, 8..20 the SRT row 0 we wrote, 24..116 its two matrices before the turn (RT +0x88, SRT +0xB8).
+mtLampSlots:
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+.int 0
+; called first thing by pfEffectSubmit (r31 = the emitter being drawn); keeps every register and f0..f13
+mtLampDraw:
+lis r12, mtLamp@ha
+addi r12, r12, mtLamp@l
+lwz r0, 0(r12)
+cmpwi r0, 0
+beqlr
+lwz r0, 20(r12)
+cmpwi r0, 0
+beqlr
+lis r11, mtControl@ha
+addi r11, r11, mtControl@l
+lwz r0, 28(r11)
+cmpwi r0, 1
+beq mtLampDrawFp
+blr
+mtLampDrawFp:
+lwz r10, 0x130(r31)
+lis r11, 0x1000
+cmplw r10, r11
+bge mtLampDrawRes
+blr
+mtLampDrawRes:
+lis r11, 0x5000
+cmplw r10, r11
+blt mtLampDrawRes2
+blr
+mtLampDrawRes2:
+andi. r0, r10, 3
+beq mtLampDrawRes3
+blr
+mtLampDrawRes3:
+lwz r0, 0x38(r10)
+cmplwi r0, 0xD162
+beq mtLampDrawGo
+cmplwi r0, 0xD169
+beq mtLampDrawGo
+blr
+mtLampDrawGo:
+stwu r1, -0x100(r1)
+mflr r0
+stw r0, 0x104(r1)
+stmw r3, 0x08(r1)
+stfd f0, 128(r1)
+stfd f1, 136(r1)
+stfd f2, 144(r1)
+stfd f3, 152(r1)
+stfd f4, 160(r1)
+stfd f5, 168(r1)
+stfd f6, 176(r1)
+stfd f7, 184(r1)
+stfd f8, 192(r1)
+stfd f9, 200(r1)
+stfd f10, 208(r1)
+stfd f11, 216(r1)
+stfd f12, 224(r1)
+stfd f13, 232(r1)
+lis r12, mtLamp@ha
+addi r12, r12, mtLamp@l
+lis r9, mtLampSlots@ha
+addi r9, r9, mtLampSlots@l
+lwz r10, 0x130(r31)
+lwz r0, 0x38(r10)
+cmplwi r0, 0xD162
+beq mtLampDrawSlot
+addi r9, r9, 120
+mtLampDrawSlot:
+; near Toad's eye (each axis within 400): his own lamp, not another Captain Toad's
+lis r8, mrEyeTarget@ha
+addi r8, r8, mrEyeTarget@l
+lfs f0, 196(r31)
+lfs f1, 0(r8)
+fsubs f0, f0, f1
+stfs f0, 0xF0(r1)
+lwz r0, 0xF0(r1)
+rlwinm r0, r0, 0, 1, 31
+lis r7, 0x43C8
+cmplw r0, r7
+bgt mtLampDrawOut
+lfs f0, 212(r31)
+lfs f1, 4(r8)
+fsubs f0, f0, f1
+stfs f0, 0xF0(r1)
+lwz r0, 0xF0(r1)
+rlwinm r0, r0, 0, 1, 31
+lis r7, 0x43C8
+cmplw r0, r7
+bgt mtLampDrawOut
+lfs f0, 228(r31)
+lfs f1, 8(r8)
+fsubs f0, f0, f1
+stfs f0, 0xF0(r1)
+lwz r0, 0xF0(r1)
+rlwinm r0, r0, 0, 1, 31
+lis r7, 0x43C8
+cmplw r0, r7
+bgt mtLampDrawOut
+; once per game frame (pad reads)
+lis r7, mtFireStat@ha
+addi r7, r7, mtFireStat@l
+lwz r6, 4(r7)
+; its set ([emitter+0x80]) already aimed (mtLampSet / mtLampAim) this pad read or the one before: the emitter is along the view already
+lwz r5, 0x80(r31)
+lwz r0, 148(r12)
+cmpw r0, r5
+bne mtLampDrawSet2
+lwz r0, 152(r12)
+b mtLampDrawSetAge
+mtLampDrawSet2:
+lwz r0, 156(r12)
+cmpw r0, r5
+bne mtLampDrawNotSet
+lwz r0, 160(r12)
+mtLampDrawSetAge:
+subf r0, r0, r6
+cmplwi r0, 1
+ble mtLampDrawOut
+mtLampDrawNotSet:
+lwz r0, 0(r9)
+cmpw r0, r31
+bne mtLampDrawFresh
+lwz r0, 4(r9)
+cmpw r0, r6
+beq mtLampDrawOut
+; the same emitter in a new frame: if its SRT row 0 is still what we wrote, the game did not rebuild the matrices: start again from the kept originals
+lwz r0, 0xB8(r31)
+lwz r7, 8(r9)
+cmpw r0, r7
+bne mtLampDrawFresh
+lwz r0, 0xBC(r31)
+lwz r7, 12(r9)
+cmpw r0, r7
+bne mtLampDrawFresh
+lwz r0, 0xC0(r31)
+lwz r7, 16(r9)
+cmpw r0, r7
+bne mtLampDrawFresh
+lwz r0, 0xC4(r31)
+lwz r7, 20(r9)
+cmpw r0, r7
+bne mtLampDrawFresh
+addi r10, r9, 24
+addi r11, r31, 0x88
+li r5, 24
+mtLampCopy1:
+lwz r0, 0(r10)
+stw r0, 0(r11)
+addi r10, r10, 4
+addi r11, r11, 4
+addi r5, r5, -1
+cmpwi r5, 0
+bne mtLampCopy1
+b mtLampDrawTurn
+mtLampDrawFresh:
+addi r10, r31, 0x88
+addi r11, r9, 24
+li r5, 24
+mtLampCopy2:
+lwz r0, 0(r10)
+stw r0, 0(r11)
+addi r10, r10, 4
+addi r11, r11, 4
+addi r5, r5, -1
+cmpwi r5, 0
+bne mtLampCopy2
+mtLampDrawTurn:
+; the body's forward: the player's facing ([[player+0xC0]+0]+0xC: x, z), level
+lis r10, mtHideActor@ha
+lwz r10, mtHideActor@l(r10)
+lis r11, 0x1000
+cmplw r10, r11
+blt mtLampDrawOut
+lis r11, 0x5000
+cmplw r10, r11
+bge mtLampDrawOut
+andi. r0, r10, 3
+bne mtLampDrawOut
+lwz r10, 0xC0(r10)
+lis r11, 0x1000
+cmplw r10, r11
+blt mtLampDrawOut
+lis r11, 0x5000
+cmplw r10, r11
+bge mtLampDrawOut
+andi. r0, r10, 3
+bne mtLampDrawOut
+lwz r10, 0(r10)
+lis r11, 0x1000
+cmplw r10, r11
+blt mtLampDrawOut
+lis r11, 0x5000
+cmplw r10, r11
+bge mtLampDrawOut
+andi. r0, r10, 3
+bne mtLampDrawOut
+lfs f1, 0xC(r10)
+lfs f2, 0x14(r10)
+fmuls f3, f1, f1
+fmuls f4, f2, f2
+fadds f3, f3, f4
+lfs f4, 96(r12)
+.int 0xFC032000 ; fcmpu cr0, f3, f4
+bgt mtLampDrawFb
+b mtLampDrawOut
+mtLampDrawFb:
+.int 0xFCA01834 ; frsqrte f5, f3
+lfs f6, 100(r12)
+lfs f7, 104(r12)
+fmuls f8, f5, f5
+fmuls f8, f8, f3
+fmuls f8, f8, f6
+fsubs f8, f7, f8
+fmuls f5, f5, f8
+fmuls f8, f5, f5
+fmuls f8, f8, f3
+fmuls f8, f8, f6
+fsubs f8, f7, f8
+fmuls f5, f5, f8
+fmuls f1, f1, f5
+fmuls f2, f2, f5
+stfs f1, 64(r12)
+stfs f2, 68(r12)
+; the view's right = (hz, 0, -hx) / |.|
+lfs f1, 8(r12)
+lfs f2, 16(r12)
+fmuls f3, f1, f1
+fmuls f4, f2, f2
+fadds f3, f3, f4
+lfs f4, 96(r12)
+.int 0xFC032000 ; fcmpu cr0, f3, f4
+bgt mtLampDrawRh
+b mtLampDrawOut
+mtLampDrawRh:
+.int 0xFCA01834 ; frsqrte f5, f3
+lfs f6, 100(r12)
+lfs f7, 104(r12)
+fmuls f8, f5, f5
+fmuls f8, f8, f3
+fmuls f8, f8, f6
+fsubs f8, f7, f8
+fmuls f5, f5, f8
+fmuls f8, f5, f5
+fmuls f8, f8, f3
+fmuls f8, f8, f6
+fsubs f8, f7, f8
+fmuls f5, f5, f8
+fmuls f2, f2, f5
+fneg f1, f1
+fmuls f1, f1, f5
+stfs f2, 72(r12)
+stfs f1, 76(r12)
+; the view's up = h x rh
+lfs f1, 8(r12)
+lfs f2, 12(r12)
+lfs f3, 16(r12)
+lfs f4, 72(r12)
+lfs f5, 76(r12)
+fmuls f6, f2, f5
+stfs f6, 80(r12)
+fmuls f6, f3, f4
+fmuls f7, f1, f5
+fsubs f6, f6, f7
+stfs f6, 84(r12)
+fmuls f6, f2, f4
+fneg f6, f6
+stfs f6, 88(r12)
+; D = rh rb^T + uh ub^T + h fb^T (as in mtLampAim)
+lfs f8, 64(r12)
+lfs f9, 68(r12)
+fmuls f10, f4, f9
+fmuls f11, f1, f8
+fadds f10, f10, f11
+stfs f10, 112(r12)
+lfs f10, 80(r12)
+stfs f10, 116(r12)
+fmuls f10, f1, f9
+fmuls f11, f4, f8
+fsubs f10, f10, f11
+stfs f10, 120(r12)
+fmuls f10, f2, f8
+stfs f10, 124(r12)
+lfs f10, 84(r12)
+stfs f10, 128(r12)
+fmuls f10, f2, f9
+stfs f10, 132(r12)
+fmuls f10, f5, f9
+fmuls f11, f3, f8
+fadds f10, f10, f11
+stfs f10, 136(r12)
+lfs f10, 88(r12)
+stfs f10, 140(r12)
+fmuls f10, f3, f9
+fmuls f11, f5, f8
+fsubs f10, f10, f11
+stfs f10, 144(r12)
+lfs f5, 112(r12)
+lfs f6, 116(r12)
+lfs f7, 120(r12)
+lfs f8, 124(r12)
+lfs f9, 128(r12)
+lfs f10, 132(r12)
+lfs f11, 136(r12)
+lfs f12, 140(r12)
+lfs f13, 144(r12)
+; both matrices (RT +0x88, SRT +0xB8): each rotation column times D, the place turned round Toad's eye
+addi r5, r31, 0x88
+li r4, 2
+mtLampDrawMtx:
+li r3, 3
+mr r11, r5
+mtLampDrawCol:
+lfs f1, 0(r11)
+lfs f2, 16(r11)
+lfs f3, 32(r11)
+fmuls f0, f5, f1
+fmuls f4, f6, f2
+fadds f0, f0, f4
+fmuls f4, f7, f3
+fadds f0, f0, f4
+stfs f0, 0(r11)
+fmuls f0, f8, f1
+fmuls f4, f9, f2
+fadds f0, f0, f4
+fmuls f4, f10, f3
+fadds f0, f0, f4
+stfs f0, 16(r11)
+fmuls f0, f11, f1
+fmuls f4, f12, f2
+fadds f0, f0, f4
+fmuls f4, f13, f3
+fadds f0, f0, f4
+stfs f0, 32(r11)
+addi r11, r11, 4
+addi r3, r3, -1
+cmpwi r3, 0
+bne mtLampDrawCol
+lfs f1, 12(r5)
+lfs f0, 0(r8)
+fsubs f1, f1, f0
+lfs f2, 28(r5)
+lfs f0, 4(r8)
+fsubs f2, f2, f0
+lfs f3, 44(r5)
+lfs f0, 8(r8)
+fsubs f3, f3, f0
+fmuls f0, f5, f1
+fmuls f4, f6, f2
+fadds f0, f0, f4
+fmuls f4, f7, f3
+fadds f0, f0, f4
+lfs f4, 0(r8)
+fadds f0, f0, f4
+stfs f0, 12(r5)
+fmuls f0, f8, f1
+fmuls f4, f9, f2
+fadds f0, f0, f4
+fmuls f4, f10, f3
+fadds f0, f0, f4
+lfs f4, 4(r8)
+fadds f0, f0, f4
+stfs f0, 28(r5)
+fmuls f0, f11, f1
+fmuls f4, f12, f2
+fadds f0, f0, f4
+fmuls f4, f13, f3
+fadds f0, f0, f4
+lfs f4, 8(r8)
+fadds f0, f0, f4
+stfs f0, 44(r5)
+addi r5, r5, 0x30
+addi r4, r4, -1
+cmpwi r4, 0
+bne mtLampDrawMtx
+; remember: this emitter, this frame, the SRT row 0 we wrote
+stw r31, 0(r9)
+stw r6, 4(r9)
+lwz r0, 0xB8(r31)
+stw r0, 8(r9)
+lwz r0, 0xBC(r31)
+stw r0, 12(r9)
+lwz r0, 0xC0(r31)
+stw r0, 16(r9)
+lwz r0, 0xC4(r31)
+stw r0, 20(r9)
+lwz r11, 4(r12)
+addi r11, r11, 1
+stw r11, 4(r12)
+mtLampDrawOut:
+lfd f0, 128(r1)
+lfd f1, 136(r1)
+lfd f2, 144(r1)
+lfd f3, 152(r1)
+lfd f4, 160(r1)
+lfd f5, 168(r1)
+lfd f6, 176(r1)
+lfd f7, 184(r1)
+lfd f8, 192(r1)
+lfd f9, 200(r1)
+lfd f10, 208(r1)
+lfd f11, 216(r1)
+lfd f12, 224(r1)
+lfd f13, 232(r1)
+lmw r3, 0x08(r1)
+lwz r0, 0x104(r1)
+mtlr r0
+addi r1, r1, 0x100
+blr

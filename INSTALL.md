@@ -9,11 +9,11 @@
 - Para o preset padrão de 120 FPS, use uma taxa de atualização de headset de 120 Hz.
 - Feche o Cemu antes de iniciar uma sessão VR.
 
-## Instalar a Version 2.1
+## Instalar a Version 2.2
 
 O ZIP de instalação traz **o Cemu 2.6 (sem modificações) e o mod**, já na pasta certa:
 
-1. Extraia `SuperMario3DWorld-VR-Version-2.1-install.zip` em qualquer pasta. Dentro dele está a pasta `Cemu_2.6`, com o
+1. Extraia `SuperMario3DWorld-VR-Version-2.2-install.zip` em qualquer pasta. Dentro dele está a pasta `Cemu_2.6`, com o
    `Cemu.exe` e, ao lado, a pasta `Mario3DWorld-VR`.
 2. Abra `Cemu_2.6\Cemu.exe` uma vez e, em *Opções → Configurações gerais → Caminhos dos jogos*, adicione a pasta do seu
    Super Mario 3D World (base europeia v0, sem atualização). Confirme que o jogo roda com um gamepad. O ZIP **não** inclui o
@@ -75,6 +75,9 @@ pela `cemuvr_layer.dll` e acha os ajustes do patch pela tabela `mtMenuTable` (ma
   menu é Plus, o clique do analógico é Minus
 - mão direita: A pula, B só corre (não ataca), **segurar o gatilho corre** (é o X do jogo, e ataca), o grip é R (e fecha
   a luva)
+- **tela de toque (Version 2.2):** segurar o **grip direito** mira (a mãozinha do jogo aparece onde o controle direito aponta,
+  sem tocar); **grip + gatilho direito** toca. Enquanto mira, o grip não manda R e o gatilho não corre; depois de tocar, o
+  gatilho só volta a correr quando for solto
 - na primeira pessoa, **segurando o grip e encostando** num casco, bola, bloco etc. o Mario pega
   (sem chutar) e ele fica na mão do grip; soltar o grip arremessa (`mtGrab`: ganchos `0x02289430`,
   `0x022916D8`, `0x0228A818`). Sem grip, encostar funciona como no jogo (chuta o casco, ativa a
@@ -380,7 +383,8 @@ valem as mesmas ações dos controles do Quest. Correspondência (a confirmar no
 | Direito: Cruz (X) | A | pula |
 | Direito: Círculo | B | corre |
 | Direito: R2 (gatilho, segurar) | gatilho | corre |
-| Direito: R1 | grip | R (fecha a luva; pega objetos, soco) |
+| Direito: R1 | grip | R (fecha a luva; pega objetos, soco); segurado mira a tela de toque |
+| Direito: R1 + R2 | grip + gatilho | toca a tela |
 | Direito: R3 (clique do analógico) | clique do analógico | alterna diorama / primeira pessoa |
 | Direito: analógico | analógico direito | olhar e girar |
 | Esquerdo: Quadrado | X | corre |
@@ -420,6 +424,18 @@ Na primeira vez que abrir o jogo com esta versão o Cemu compila as cópias dos 
 algumas travadinhas; depois fica no cache. A roupa branca do Mario de fogo não é luva e ainda não
 recebe esse tratamento. O log `cemuvr_layer.log` (na pasta do Cemu) mostra a linha `glove draws: B=...`
 para conferir que as cópias estão em uso.
+
+## Novidades da Version 2.2
+
+- **Tela de toque:** segurar o grip direito mira com a mãozinha do jogo onde o controle direito aponta (pela pose de mira do
+  controle, com um raio até o cenário); grip + gatilho direito toca. Funciona na primeira pessoa, na câmera 200 e na câmera
+  do jogo. A camada (`cemuvr_layer.dll`) agora lê também a pose de mira (`/input/aim/pose`) dos controles.
+- **Lanterna do Capitão Toad:** em primeira pessoa a luz da lanterna aponta para onde o óculos olha, inclusive para cima e
+  para baixo; posição, brilho e alcance continuam os do jogo.
+- **Câmera 200 em arco:** a distância do analógico direito (80 a 600) vira um arco: nivelada em 200 (como antes), descendo
+  até cerca de 30° abaixo dos olhos no mais perto e subindo até cerca de 55° acima no mais longe (`mtArc`; `mtArc`+0 = 0 volta
+  ao jeito antigo).
+- **X esquerdo:** volta a ser o X do jogo.
 
 ## Novidades da Version 2.1
 
